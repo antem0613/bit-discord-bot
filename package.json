@@ -1,0 +1,27 @@
+{
+  "name": "dicecopilot",
+  "version": "1.0.0",
+  "description": "Discord LLMchat and dice bot",
+  "main": "main.js",
+  "scripts": {
+    "start": "node --env-file=.env main.js"
+  },
+  "author": "antem0613",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@discordjs/opus": "^0.10.0",
+    "@discordjs/voice": "^0.18.0",
+    "bcdice": "^4.7.1",
+    "discord.js": "^14.17.3",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "ffmpeg": "^0.0.4",
+    "jq": "^1.7.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1"
+  }
+}
