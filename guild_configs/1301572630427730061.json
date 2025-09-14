@@ -1,0 +1,23 @@
+{
+  "tts": {
+    "textChannelId": "1301572630427730064",
+    "voiceChannelId": "1301572630427730066",
+    "isReactionSpeach": true,
+    "excludeRegEx": "(?!)",
+    "memberSpeakerConfigs": {
+      "698700904169340928": {
+        "engine": "VOICEVOX",
+        "id": 3,
+        "speedScale": 1,
+        "pitchScale": 0,
+        "intonationScale": 1,
+        "volumeScale": 1,
+        "tempoDynamicsScale": 1
+      }
+    }
+  },
+  "dice": {
+    "diceChannel": null,
+    "system": "DiceBot"
+  }
+}

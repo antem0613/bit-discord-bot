@@ -2,7 +2,8 @@ import { Client , Collection , Events , GatewayIntentBits , ActivityType , Embed
 import express from 'express';
 import fs from 'fs';
 import CommandResister from "./regist-command.js";
-import {loadData, checkExist, createData } from './editData.js';
+import { editData } from './editData.js';
+import { loadData, checkExist, createData } from './editData.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -31,6 +32,7 @@ const client = new Client({ intents: [
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildMessageReactions
 ]});
 
 client.commands = new Collection();
@@ -51,22 +53,57 @@ for(const file of handlerFiles){
 }
 
 client.on("interactionCreate", async interaction => {
-    await handlers.get('interactionCreate').default(interaction);
+    await handlers.get('interactionCreate').default(interaction, editData);
 });
 
 client.on("messageCreate", async message => {
     if(message.author.id === client.user.id) return;
-    await handlers.get('messageCreate').default(message);
+    await handlers.get('messageCreate').default(message, editData);
 });
 
-client.on('ready', () => {
+
+
+client.on('clientReady', () => {
     console.log('Bot logged in');
-    client.user.setActivity(`DiceSystem：${global.system}`, { type: ActivityType.Custom });
+    // editDataからsystem名取得
+    for (const guild of client.guilds.cache.values()) {
+        const systemName = editData.GuildConfigs[guild.id]?.dice?.system || 'DiceBot';
+        client.user.setActivity(`DiceSystem：${systemName}`, { type: ActivityType.Custom });
+    }
 });
 
-export function updateActivity(){
-    client.user.setActivity(`DiceSystem：${global.system}`, { type: ActivityType.Custom });
+export function updateActivity() {
+    for (const guild of client.guilds.cache.values()) {
+        const systemName = editData.GuildConfigs[guild.id]?.dice?.system || 'DiceBot';
+        client.user.setActivity(`DiceSystem：${systemName}`, { type: ActivityType.Custom });
+    }
 }
+
+
 
 CommandResister();
 client.login(process.env.TOKEN);
+
+// プロセス終了時に/tts off相当の処理を実行
+import { getVoiceConnection } from '@discordjs/voice';
+function disconnectAllVoice() {
+    for (const [guildId, connection] of (getVoiceConnection instanceof Function ? [...client.guilds.cache.values()].map(g => [g.id, getVoiceConnection(g.id)]).filter(([_, c]) => c) : [])) {
+        try {
+            connection.state.subscription?.player?.stop();
+            connection.destroy();
+            editData.saveConfig(guildId);
+            editData.saveDictionary(guildId);
+            console.log(`[TTS] Disconnected from guild ${guildId}`);
+        } catch (e) {
+            console.error(`[TTS] Disconnect error for guild ${guildId}:`, e);
+        }
+    }
+}
+process.on('SIGINT', () => {
+    disconnectAllVoice();
+    process.exit(0);
+});
+process.on('SIGTERM', () => {
+    disconnectAllVoice();
+    process.exit(0);
+});

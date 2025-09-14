@@ -1,6 +1,6 @@
 import bcdice from 'bcdice';
 import { SlashCommandBuilder } from 'discord.js';
-import { saveData } from '../editData.js';
+import { saveData, editData } from '../editData.js';
 import { updateActivity } from '../main.js';
 
 const loader = new bcdice.DynamicLoader();
@@ -51,7 +51,7 @@ export async function execute(interaction){
     var id = interaction.options.getString("system_id");
     
     if(id == null || id == ""){
-      await interaction.reply("``` ## ダイス機能一覧\n- help これです。システムIDを併記することでシステム独自コマンドのヘルプが表示されます。\n- systems ゲームシステム一覧を見ることができるリンクを貼ります。\n- set ダイスボットの使用するゲームシステムを設定します。\n- roll コマンドでダイスを振ります。\n- info ダイスボットの情報を表示します。\nチャンネルに直接ダイスコマンドを入力してもダイスが振れます。```")
+      await interaction.reply("## ダイス機能一覧\n- help これです。システムIDを併記することでシステム独自コマンドのヘルプが表示されます。\n- systems ゲームシステム一覧を見ることができるリンクを貼ります。\n- set ダイスボットの使用するゲームシステムを設定します。\n- roll コマンドでダイスを振ります。\n- info ダイスボットの情報を表示します。\nチャンネルに直接ダイスコマンドを入力してもダイスが振れます。")
       return
     }
     else{
@@ -69,12 +69,13 @@ export async function execute(interaction){
   if(subCommand=="set-system"){
     var id = interaction.options.getString("system_id");
     
+    const defaultGuildId = 'default';
     if(id == null || id == ""){
-      global.system="DiceBot";
+      editData.initGuildConfigIfUndefined(defaultGuildId).dice.system = "DiceBot";
+    } else {
+      editData.initGuildConfigIfUndefined(defaultGuildId).dice.system = id;
     }
-    else{
-      global.system=id;
-    }
+    editData.saveConfig(defaultGuildId);
 
     saveData();
     
@@ -84,13 +85,15 @@ export async function execute(interaction){
   }
   
   if(subCommand=="info"){
-    await interaction.reply(">>> BCDice " + bcdice.Version + "\n現在のゲームシステム："+ system);
+    const defaultGuildId = 'default';
+    const diceConfig = editData.initGuildConfigIfUndefined(defaultGuildId).dice;
+    await interaction.reply(">>> BCDice " + bcdice.Version + "\n現在のゲームシステム：" + diceConfig.system);
     return;
   }
 
   if(subCommand=="roll"){
     const command = interaction.options.getString("command");
-    const result = await rollDice(command);
+    const result = await rollDice(command, interaction.guildId);
     if(result == null){
       await interaction.reply("コマンドが正しくありません");
       return;
@@ -101,47 +104,41 @@ export async function execute(interaction){
 
   if(subCommand=="set-channel"){
     const channel = interaction.options.getChannel("channel");
-    global.diceChannel = channel.id;
-    saveData();
+    const guildId = interaction.guildId;
+    const config = editData.initGuildConfigIfUndefined(guildId);
+    const diceConfig = config.dice;
 
-    if(channel == null){
-      await interaction.reply("ダイスボットは全てのチャンネルで動作します");
+    if (channel.id === config.tts.textChannelId) {
+      await interaction.reply("ダイスボットのチャンネルはTTSのチャンネルと同じにできません");
       return;
     }
 
+    diceConfig.diceChannel = channel.id;
+    editData.saveConfig(guildId);
     await interaction.reply("ダイスボットのチャンネルを"+channel.name +"に設定しました");
     return;
   }
 }
 
-export async function rollDice(message) {
-  if (message.author.bot) return
-  
-  var roll = message.content;
-  
-  try 
-  {     
+export async function rollDice(command, guildId) {
+  const diceConfig = editData.initGuildConfigIfUndefined(guildId).dice;
+  const system = diceConfig.system;
+  var roll = String(command);
+  try {
     const GameSystem = await loader.dynamicLoad(system);
-    
     console.log(system + ", " + roll);
-    
     if(roll.match(GameSystem.COMMAND_PATTERN)){
       const result = GameSystem.eval(roll);
       console.log(result);
-      
       if(result.secret){
         return "s"+result.text;
       }
-      
       return result.text;
-    }
-    else{
+    } else {
       console.log("diceroll cannot execute");
       return;
     }
-  } 
-  catch 
-  {
-      return;
+  } catch {
+    return;
   }
 }
