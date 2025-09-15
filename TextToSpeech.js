@@ -66,7 +66,7 @@ async function TextToSpeech(splitedText, speaker, player, queue){
 
 async function voiceSynthesis(text, speaker){
   // speaker.engineが未定義の場合はデフォルト値を利用
-  const engine = speaker.engine || process.env.defaultSpeakerEngine || "VOICEVOX";
+  const engine = speaker.engine || process.env.DEFAULT_SPEAKER_ENGINE || "VOICEVOX";
   const servers = getVoiceServers();
   const server = servers.find( (x) => x.engine === engine );
 
@@ -178,7 +178,7 @@ function getVoiceServers(){
 
   if (!engine) {
       // フラグメントが空の場合はデフォルト値を利用
-      engine = process.env.defaultSpeakerEngine || "VOICEVOX";
+    engine = process.env.DEFAULT_SPEAKER_ENGINE || "VOICEVOX";
   }
 
   const baseURL = url.origin;

@@ -8,20 +8,20 @@ dotenv.config();
 
 const envVoiceServer = process.env.VOICEVOX_SERVER_URL;
 
-const envSpeakerSpeedScaleUpperLimit = Number(process.env.speakerSpeedScaleUpperLimit);
-const envSpeakerSpeedScaleLowerLimit = Number(process.env.speakerSpeedScaleLowerLimit);
+const envSpeakerSpeedScaleUpperLimit = Number(process.env.SPEAKER_SPEED_SCALE_UPPER_LIMIT);
+const envSpeakerSpeedScaleLowerLimit = Number(process.env.SPEAKER_SPEED_SCALE_LOWER_LIMIT);
 
-const envSpeakerPitchScaleUpperLimit = Number(process.env.speakerPitchScaleUpperLimit);
-const envSpeakerPitchScaleLowerLimit = Number(process.env.speakerPitchScaleLowerLimit);
+const envSpeakerPitchScaleUpperLimit = Number(process.env.SPEAKER_PITCH_SCALE_UPPER_LIMIT);
+const envSpeakerPitchScaleLowerLimit = Number(process.env.SPEAKER_PITCH_SCALE_LOWER_LIMIT);
 
-const envSpeakerIntonationScaleUpperLimit = Number(process.env.speakerIntonationScaleUpperLimit);
-const envSpeakerIntonationScaleLowerLimit = Number(process.env.speakerIntonationScaleLowerLimit);
+const envSpeakerIntonationScaleUpperLimit = Number(process.env.SPEAKER_INTONATION_SCALE_UPPER_LIMIT);
+const envSpeakerIntonationScaleLowerLimit = Number(process.env.SPEAKER_INTONATION_SCALE_LOWER_LIMIT);
 
-const envSpeakerVolumeScaleUpperLimit = Number(process.env.speakerVolumeScaleUpperLimit);
-const envSpeakerVolumeScaleLowerLimit = Number(process.env.speakerVolumeScaleLowerLimit);
+const envSpeakerVolumeScaleUpperLimit = Number(process.env.SPEAKER_VOLUME_SCALE_UPPER_LIMIT);
+const envSpeakerVolumeScaleLowerLimit = Number(process.env.SPEAKER_VOLUME_SCALE_LOWER_LIMIT);
 
-const envSpeakerTempoDynamicsScaleUpperLimit = Number(process.env.speakerTempoDynamicsScaleUpperLimit);
-const envSpeakerTempoDynamicsScaleLowerLimit = Number(process.env.speakerTempoDynamicsScaleLowerLimit);
+const envSpeakerTempoDynamicsScaleUpperLimit = Number(process.env.SPEAKER_TEMPO_DYNAMICS_SCALE_UPPER_LIMIT);
+const envSpeakerTempoDynamicsScaleLowerLimit = Number(process.env.SPEAKER_TEMPO_DYNAMICS_SCALE_LOWER_LIMIT);
 
 const envAutocompleteLimit = parseInt(process.env.autocompleteLimit);
 
@@ -389,7 +389,7 @@ export async function execute(interaction, data) {
 
         // コマンド実行者の話者設定があれば優先して適用、なければデフォルト話者を設定
         if (!speaker.speakerName || !speaker.styleName) {
-            const defaultSpeaker = speakerlist.find(x => String(x.id) === String(process.env.defaultSpeakerId));
+            const defaultSpeaker = speakerlist.find(x => String(x.id) === String(process.env.DEFAULT_SPEAKER_ID));
             speaker.speakerName = defaultSpeaker ? defaultSpeaker.speakerName : "デフォルト";
             speaker.styleName = defaultSpeaker ? defaultSpeaker.styleName : "";
         }

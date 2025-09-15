@@ -3,17 +3,17 @@ import fs from "fs";
 import crypto from "crypto";
 dotenv.config();
 
-const envDefaultSpeakerEngine = process.env.defaultSpeakerEngine;
-const envDefaultSpeakerId     = parseInt(process.env.defaultSpeakerId);
+const envDefaultSpeakerEngine = process.env.DEFAULT_SPEAKER_ENGINE;
+const envDefaultSpeakerId = parseInt(process.env.DEFAULT_SPEAKER_ID);
 
-const envDefaultSpeakerSpeedScale          = Number(process.env.defaultSpeakerSpeedScale);
-const envDefaultSpeakerPitchScale          = Number(process.env.defaultSpeakerPitchScale);
-const envDefaultSpeakerIntonationScale     = Number(process.env.defaultSpeakerIntonationScale);
-const envDefaultSpeakerVolumeScale         = Number(process.env.defaultSpeakerVolumeScale);
-const envDefaultSpeakerTempoDynamicsScale  = Number(process.env.defaultSpeakerTempoDynamicsScale);
+const envDefaultSpeakerSpeedScale = Number(process.env.DEFAULT_SPEAKER_SPEED_SCALE);
+const envDefaultSpeakerPitchScale = Number(process.env.DEFAULT_SPEAKER_PITCH_SCALE);
+const envDefaultSpeakerIntonationScale = Number(process.env.DEFAULT_SPEAKER_INTONATION_SCALE);
+const envDefaultSpeakerVolumeScale = Number(process.env.DEFAULT_SPEAKER_VOLUME_SCALE);
+const envDefaultSpeakerTempoDynamicsScale = Number(process.env.DEFAULT_SPEAKER_TEMPO_DYNAMICS_SCALE);
 
-const envGuildConfigsDir      = process.env.guildConfigsDir;
-const envGuildDictionariesDir = process.env.guildDictionariesDir;
+const envGuildConfigsDir = process.env.GUILD_CONFIGS_DIR;
+const envGuildDictionariesDir = process.env.GUILD_DICTIONARIES_DIR;
 
 /**
  * グローバルデータを管理するクラス
