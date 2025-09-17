@@ -1,4 +1,5 @@
 import { Client , Collection , Events , GatewayIntentBits , ActivityType , EmbedBuilder} from 'discord.js';
+import { getVoiceConnection } from "@discordjs/voice";
 import express from 'express';
 import fs from 'fs';
 import CommandResister from "./regist-command.js";
@@ -72,6 +73,24 @@ client.on('clientReady', () => {
     }
 });
 
+    // ボイスチャンネルに誰もいなくなったらBotが退出する
+client.on("voiceStateUpdate", (oldState, newState) => {
+    const guildId = oldState.guild.id;
+    const connection = getVoiceConnection(guildId);
+    if (!connection) return;
+
+    const botChannelId = connection.joinConfig.channelId;
+    const channel = oldState.guild.channels.cache.get(botChannelId);
+    if (!channel || channel.type !== 2) return; // type: 2 = GUILD_VOICE
+
+    // Bot以外のメンバーがいない場合
+    const nonBotMembers = channel.members.filter(member => !member.user.bot);
+    if (nonBotMembers.size === 0) {
+        connection.destroy();
+        console.log("[TTS] Disconnected due to no non-bot members in the voice channel.");
+    }
+});
+
 export function updateActivity() {
     for (const guild of client.guilds.cache.values()) {
         const systemName = editData.GuildConfigs[guild.id]?.dice?.system || 'DiceBot';
@@ -85,7 +104,6 @@ CommandResister();
 client.login(process.env.TOKEN);
 
 // プロセス終了時に/tts off相当の処理を実行
-import { getVoiceConnection } from '@discordjs/voice';
 function disconnectAllVoice() {
     for (const [guildId, connection] of (getVoiceConnection instanceof Function ? [...client.guilds.cache.values()].map(g => [g.id, getVoiceConnection(g.id)]).filter(([_, c]) => c) : [])) {
         try {

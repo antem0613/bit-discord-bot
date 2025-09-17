@@ -17,7 +17,7 @@
     }
   },
   "dice": {
-    "diceChannel": null,
+    "diceChannel": "1337121693474230373",
     "system": "DiceBot"
   }
 }

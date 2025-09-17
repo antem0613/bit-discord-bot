@@ -7,9 +7,8 @@ export default async (message, data) => {
   const guildId = message.guildId;
   const diceChannel = data.GuildConfigs[guildId]?.dice?.diceChannel;
   const ttsChannel = data.GuildConfigs[guildId]?.tts?.textChannelId;
-  console.log(message.channel.id + "," + diceChannel + "," + ttsChannel);
 
-  if (message.channel.id == diceChannel || (diceChannel == null || diceChannel === "" || diceChannel === undefined)) {
+  if (message.channel.id == diceChannel || ((diceChannel == null || diceChannel === "" || diceChannel === undefined) && message.channel.id != ttsChannel)) {
     try{
       var res = await rollDice(message, guildId);
   
@@ -31,6 +30,8 @@ export default async (message, data) => {
     }
   }
   else if ((ttsChannel == null || ttsChannel === "") || message.channel.id == ttsChannel) {
+    console.log("TTS called : " + message.content);
+    
     if (message.author.bot) return;
 
     const guildId = message.guildId;
@@ -41,11 +42,12 @@ export default async (message, data) => {
 
     if (!connection) return;
 
-    const guildConfig = data.initGuildConfigIfUndefined(guildId);
+    const guildConfig = data.initGuildConfigIfUndefined(guildId).tts;
 
     if (new RegExp(guildConfig.excludeRegEx).test(message.content)) return;
 
     const memberId = message.member.id;
+
     const memberSpeakerConfig = data.initMemberSpeakerConfigIfUndefined(guildId, memberId);
 
     const text = message.content;

@@ -115,7 +115,7 @@ export async function execute(interaction){
 
     diceConfig.diceChannel = channel.id;
     editData.saveConfig(guildId);
-    await interaction.reply("ダイスボットのチャンネルを"+channel.name +"に設定しました");
+    await interaction.reply("ダイスチャンネルを"+channel.name +"に設定しました");
     return;
   }
 }

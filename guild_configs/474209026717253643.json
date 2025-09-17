@@ -1,0 +1,41 @@
+{
+  "tts": {
+    "textChannelId": "708420494545649734",
+    "voiceChannelId": "708420382201479268",
+    "isReactionSpeach": true,
+    "excludeRegEx": "(?!)",
+    "memberSpeakerConfigs": {
+      "1097508830759362612": {
+        "id": 7,
+        "speedScale": 1,
+        "pitchScale": -0.15,
+        "intonationScale": 2,
+        "volumeScale": 2,
+        "tempoDynamicsScale": 1
+      },
+      "698700904169340928": {
+        "engine": "VOICEVOX",
+        "id": 8,
+        "speedScale": 1,
+        "pitchScale": 0,
+        "intonationScale": 1,
+        "volumeScale": 1,
+        "tempoDynamicsScale": 1
+      },
+      "448015323103494149": {
+        "engine": "VOICEVOX",
+        "id": 29,
+        "speedScale": 0.8,
+        "pitchScale": 0.05,
+        "intonationScale": 0.95,
+        "volumeScale": 1,
+        "tempoDynamicsScale": 1
+      }
+    }
+  },
+  "dice": {
+    "diceChannel": "1417520911392706580",
+    "system": "DiceBot"
+  },
+  "textChannelId": "708420494545649734"
+}

@@ -388,7 +388,7 @@ export async function execute(interaction, data) {
         speaker = speakerlist.find(x => String(x.id) === String(memberSpeakerConfig.id));
 
         // コマンド実行者の話者設定があれば優先して適用、なければデフォルト話者を設定
-        if (!speaker.speakerName || !speaker.styleName) {
+        if (!speaker || !speaker.speakerName || !speaker.styleName) {
             const defaultSpeaker = speakerlist.find(x => String(x.id) === String(process.env.DEFAULT_SPEAKER_ID));
             speaker.speakerName = defaultSpeaker ? defaultSpeaker.speakerName : "デフォルト";
             speaker.styleName = defaultSpeaker ? defaultSpeaker.styleName : "";
@@ -741,7 +741,7 @@ export async function execute(interaction, data) {
     }
 
     if (subCommand == "channel") {
-        const channel = interaction.options.getChannel("text");
+        const channel = interaction.options.getChannel("textchannel");
         const guildId = interaction.guildId;
         const guildConfig = data.initGuildConfigIfUndefined(guildId);
 
