@@ -4,6 +4,7 @@ import { TextPreprocessor } from "../textPreprocessor.js";
 import { TextToSpeech } from "../TextToSpeech.js";
 import { saveData, editData } from '../editData.js';
 import dotenv from "dotenv";
+import e from "express";
 dotenv.config();
 
 const envVoiceServer = process.env.VOICEVOX_SERVER_URL;
@@ -25,6 +26,42 @@ const envSpeakerTempoDynamicsScaleLowerLimit = Number(process.env.SPEAKER_TEMPO_
 
 const envAutocompleteLimit = parseInt(process.env.autocompleteLimit);
 
+
+
+// グローバルTTSジョブキュー（ギルドごと）
+const ttsJobQueues = {};
+const ttsJobRunners = {};
+
+/**
+ * TTSジョブをキューに追加し、監視ループを起動
+ * @param {string} guildId
+ * @param {object} job { text: string[], speakerConfig: object, player: object }
+ */
+export function enqueueTTSJob(guildId, job) {
+    if (!ttsJobQueues[guildId]) ttsJobQueues[guildId] = [];
+    ttsJobQueues[guildId].push(job);
+    if (!ttsJobRunners[guildId]) {
+        ttsJobRunners[guildId] = runTTSJobQueue(guildId);
+    }
+}
+
+/**
+ * TTSジョブキューを逐次処理するループ
+ * @param {string} guildId
+ */
+async function runTTSJobQueue(guildId) {
+    while (ttsJobQueues[guildId] && ttsJobQueues[guildId].length > 0) {
+        const job = ttsJobQueues[guildId][0];
+        try {
+            await TextToSpeech(job.text, job.speakerConfig, job.player, []); // queueは空配列でOK
+        } catch (e) {
+            console.error('[TTS] ジョブ処理中にエラー:', e);
+        }
+        ttsJobQueues[guildId].shift();
+    }
+    ttsJobRunners[guildId] = null;
+}
+
 // デフォルト値
 const defaultAudioQuery = {
     speedScale: 1,
@@ -36,34 +73,31 @@ const defaultAudioQuery = {
 
 // 話者の情報を取得
 const speakersWithStyles = (async () => {
-
     const result = [];
-
     const url = envVoiceServer;
-
-    const response = await fetch(url + "/speakers", {
-        headers: { "accept": "application/json" },
-    });
-
-    if (!response.ok) {
-        throw new Error(`speakers API failed: ${response.status} ${response.statusText}`);
-    }
-
-    const speakers = await response.json();
-
-    for (const speaker of speakers) {
-        for (const style of speaker.styles) {
-
-            result.push({
-                "id": style.id,
-                "speakerName": speaker.name,
-                "styleName": style.name,
-                "fqn": `${speaker.name}(${style.name})/${style.id}`
-            });
+    try {
+        const response = await fetch(url + "/speakers", {
+            headers: { "accept": "application/json" },
+        });
+        if (!response.ok) {
+            throw new Error(`speakers API failed: ${response.status} ${response.statusText}`);
         }
+        const speakers = await response.json();
+        for (const speaker of speakers) {
+            for (const style of speaker.styles) {
+                result.push({
+                    "id": style.id,
+                    "speakerName": speaker.name,
+                    "styleName": style.name,
+                    "fqn": `${speaker.name}(${style.name})/${style.id}`
+                });
+            }
+        }
+        return result;
+    } catch (err) {
+        console.error("VOICEVOXサーバーへの接続に失敗:", err);
+        return [];
     }
-
-    return result;
 })();
 
 export const data = new SlashCommandBuilder()
@@ -249,6 +283,20 @@ export const data = new SlashCommandBuilder()
         )
     )
     .addSubcommand(subCommand => subCommand
+        .setName("dict")
+        .setDescription("辞書を追加設定します。")
+        .addStringOption(option => option
+            .setName("key")
+            .setDescription("置換前の文字列")
+            .setRequired(true)
+        )
+        .addStringOption(option => option
+            .setName("value")
+            .setDescription("置換後の文字列")
+            .setRequired(true)
+        )
+    )
+    .addSubcommand(subCommand => subCommand
         .setName("info")
         .setDescription("TTS機能の情報を表示します")
     )
@@ -403,9 +451,13 @@ export async function execute(interaction, data) {
 
         await interaction.reply("読み上げボットを接続しました");
 
-        const queue = data.initGuildQueueIfUndefined(guildId);
+        //const queue = data.initGuildQueueIfUndefined(guildId);
         const testText = "読み上げが有効になりました";
-        await TextToSpeech([testText], memberSpeakerConfig, player, queue);
+        enqueueTTSJob(guildId, {
+            text: [testText],
+            speakerConfig: memberSpeakerConfig,
+            player: player
+        });
         return;
     }
 
@@ -499,7 +551,7 @@ export async function execute(interaction, data) {
         const guildId = interaction.guildId;
         const memberId = interaction.member.id;
         const memberSpeakerConfig = data.initMemberSpeakerConfigIfUndefined(guildId, memberId);
-        const fqn = memberSpeakerConfig.speakerName && memberSpeakerConfig.styleName ? `${memberSpeakerConfig.speakerName}(${memberSpeakerConfig.styleName})` : null;
+        let fqn = memberSpeakerConfig.speakerName + (memberSpeakerConfig.styleName ? `(${memberSpeakerConfig.styleName})` : "");
 
         if (interaction.options.getString("speaker")) {
             const speakers = await speakersWithStyles;
@@ -728,7 +780,10 @@ export async function execute(interaction, data) {
         let speakerlist = await speakersWithStyles;
         let speaker = speakerlist.find(x => String(x.id) === String(memberSpeakerConfig.id));
 
-        let message = `${interaction.client.user.username}のTTS機能の情報です\n\n` +
+        let message = `共通情報`+
+        `テキストチャンネル: ${interaction.client.channels.cache.get(memberSpeakerConfig.textChannelId)?.name || "未設定"}`+
+        ` ボイスチャンネル: ${interaction.client.channels.cache.get(memberSpeakerConfig.voiceChannelId)?.name || "未設定"}\n\n`;
+        `${interaction.client.user.username}用\n\n` +
             `話者: ${speaker.fqn}\n` +
             `話速: ${memberSpeakerConfig.speedScale}\n` +
             `音高: ${memberSpeakerConfig.pitchScale}\n` +
@@ -738,6 +793,42 @@ export async function execute(interaction, data) {
 
         interaction.reply(message);
         return;
+    }
+
+    if (subCommand == "dict") {
+        const guildId = interaction.guildId;
+        const key = interaction.options.getString("key");
+        const value = interaction.options.getString("value");
+        const dict = data.initGuildDictionaryIfUndefined(guildId);
+
+        let message = "";
+            // 既存語彙の値（読みに）キーが含まれていたら反映しない
+            const foundInValue = Object.values(dict).some(v => v.includes(key));
+            if (foundInValue || key === value) {
+                await interaction.reply({ content: `既存の語彙の読みにキー「${key}」が含まれているため、追加・更新できません。` , ephemeral: true });
+                return;
+            }
+            if (value === "" || value === undefined || value === null || value.trim() === "") {
+                if (dict[key] !== undefined) {
+                    delete dict[key];
+                    data.saveDictionary(guildId);
+                    await interaction.reply({ content: `語彙「${key}」を辞書から削除しました。` });
+                } else {
+                    await interaction.reply({ content: `語彙「${key}」は辞書に存在しません。` });
+                }
+                return;
+            }
+            if (dict[key] !== undefined) {
+                // 差分表示
+                message += `既存語彙「${key}」を上書きします。\n`;
+                message += `旧: ${dict[key]}\n新: ${value}`;
+            } else {
+                message += `語彙「${key}」を追加しました。`;
+            }
+            dict[key] = value;
+            data.saveDictionary(guildId);
+            await interaction.reply({ content: message });
+            return;
     }
 
     if (subCommand == "channel") {

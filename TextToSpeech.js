@@ -95,14 +95,22 @@ async function voiceSynthesis(text, speaker){
   if (typeof speaker.tempoDynamicsScale === 'number') audioQuery.tempoDynamicsScale = speaker.tempoDynamicsScale;
 
   // 音声データの生成
-  const response_synthesis = await fetch(server.baseURL + "/synthesis?speaker=" + speaker.id, {
-    "method": "POST",
-    "headers": { "accept": "audio/wav", "Content-Type": "application/json" },
-    "body": JSON.stringify(audioQuery)
-  });
 
-  if(!response_synthesis.ok){
-    throw new Error(`synthesis API failed: ${response_synthesis.status} ${response_synthesis.statusText}`);
+  let response_synthesis;
+  try {
+    response_synthesis = await fetch(server.baseURL + "/synthesis?speaker=" + speaker.id, {
+      "method": "POST",
+      "headers": { "accept": "audio/wav", "Content-Type": "application/json" },
+      "body": JSON.stringify(audioQuery),
+      setTimeout: 60000
+    });
+  } catch (err) {
+    console.error('Fetch error:', err);
+    return;
+  }
+
+  if (!response_synthesis || !response_synthesis.ok) {
+    return;
   }
 
   // ストリームとして音声データを扱う（Web Streams API → Node.js Stream変換）

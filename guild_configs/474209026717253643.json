@@ -1,17 +1,18 @@
 {
   "tts": {
-    "textChannelId": "708420494545649734",
+    "textChannelId": "1440665688049188874",
     "voiceChannelId": "708420382201479268",
     "isReactionSpeach": true,
     "excludeRegEx": "(?!)",
     "memberSpeakerConfigs": {
       "1097508830759362612": {
-        "id": 7,
+        "id": 8,
         "speedScale": 1,
-        "pitchScale": -0.15,
-        "intonationScale": 2,
-        "volumeScale": 2,
-        "tempoDynamicsScale": 1
+        "pitchScale": 0,
+        "intonationScale": 1,
+        "volumeScale": 1,
+        "tempoDynamicsScale": 1,
+        "engine": "VOICEVOX"
       },
       "698700904169340928": {
         "engine": "VOICEVOX",
@@ -30,12 +31,93 @@
         "intonationScale": 0.95,
         "volumeScale": 1,
         "tempoDynamicsScale": 1
+      },
+      "435369171048595466": {
+        "engine": "VOICEVOX",
+        "id": 29,
+        "speedScale": 1,
+        "pitchScale": -0.02,
+        "intonationScale": 1,
+        "volumeScale": 1.5,
+        "tempoDynamicsScale": 1
+      },
+      "797970810916044831": {
+        "engine": "VOICEVOX",
+        "id": 3,
+        "speedScale": 1,
+        "pitchScale": 0,
+        "intonationScale": 1,
+        "volumeScale": 1,
+        "tempoDynamicsScale": 1
+      },
+      "858220666717601812": {
+        "engine": "VOICEVOX",
+        "id": 3,
+        "speedScale": 1,
+        "pitchScale": 0,
+        "intonationScale": 1,
+        "volumeScale": 1,
+        "tempoDynamicsScale": 1
+      },
+      "603091272269561876": {
+        "engine": "VOICEVOX",
+        "id": 3,
+        "speedScale": 1,
+        "pitchScale": 0,
+        "intonationScale": 1,
+        "volumeScale": 1,
+        "tempoDynamicsScale": 1
+      },
+      "513346241590067201": {
+        "engine": "VOICEVOX",
+        "id": 3,
+        "speedScale": 1,
+        "pitchScale": 0,
+        "intonationScale": 1,
+        "volumeScale": 1,
+        "tempoDynamicsScale": 1
+      },
+      "974981845320093756": {
+        "engine": "VOICEVOX",
+        "id": 3,
+        "speedScale": 1,
+        "pitchScale": 0,
+        "intonationScale": 1,
+        "volumeScale": 1,
+        "tempoDynamicsScale": 1
+      },
+      "474212644648386560": {
+        "engine": "VOICEVOX",
+        "id": 3,
+        "speedScale": 1,
+        "pitchScale": 0,
+        "intonationScale": 1,
+        "volumeScale": 1,
+        "tempoDynamicsScale": 1
+      },
+      "312564526715240449": {
+        "engine": "VOICEVOX",
+        "id": 3,
+        "speedScale": 1,
+        "pitchScale": 0,
+        "intonationScale": 1,
+        "volumeScale": 1,
+        "tempoDynamicsScale": 1
+      },
+      "591634742793863185": {
+        "engine": "VOICEVOX",
+        "id": 3,
+        "speedScale": 1,
+        "pitchScale": 0,
+        "intonationScale": 1,
+        "volumeScale": 1,
+        "tempoDynamicsScale": 1
       }
     }
   },
   "dice": {
     "diceChannel": "1417520911392706580",
-    "system": "DiceBot"
+    "system": "SwordWorld2.5"
   },
-  "textChannelId": "708420494545649734"
+  "textChannelId": "1440665688049188874"
 }

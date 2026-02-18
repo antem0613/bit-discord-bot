@@ -1,4 +1,5 @@
 import { Client , Collection , Events , GatewayIntentBits , ActivityType , EmbedBuilder} from 'discord.js';
+import { setupTerminalMessageSender } from './utils/terminalMessageSender.js';
 import { getVoiceConnection } from "@discordjs/voice";
 import express from 'express';
 import fs from 'fs';
@@ -10,7 +11,9 @@ dotenv.config();
 
 let postCount = 0;
 const app = express();
-app.listen(3000);
+app.listen(process.env.SERVER_PORT || 3000, () => {
+    console.log(`Server is running on port ${process.env.SERVER_PORT || 3000}`);
+});
 
 if(checkExist()){
     loadData();
@@ -26,6 +29,10 @@ app.post('/',function(req,res){
     if(postCount == 10){
         postCount = 0;
     }
+});
+
+app.get('/health', (req, res) => {
+    res.status(200).json({status: 'ok'});
 });
 
 const client = new Client({ intents: [
@@ -68,7 +75,8 @@ client.on('clientReady', () => {
     console.log('Bot logged in');
     // editDataからsystem名取得
     for (const guild of client.guilds.cache.values()) {
-        const systemName = editData.GuildConfigs[guild.id]?.dice?.system || 'DiceBot';
+        const guildConfig = editData.initGuildConfigIfUndefined(guild.id);
+        const systemName = guildConfig.dice?.system || 'DiceBot';
         client.user.setActivity(`DiceSystem：${systemName}`, { type: ActivityType.Custom });
     }
 });
@@ -102,6 +110,10 @@ export function updateActivity() {
 
 CommandResister();
 client.login(process.env.TOKEN);
+// Bot起動後にターミナルからメッセージ送信できるようにする
+client.once('clientReady', () => {
+    setupTerminalMessageSender(client);
+});
 
 // プロセス終了時に/tts off相当の処理を実行
 function disconnectAllVoice() {
@@ -117,6 +129,7 @@ function disconnectAllVoice() {
         }
     }
 }
+// SIGINT/SIGTERM時のみBotを安全にシャットダウン
 process.on('SIGINT', () => {
     disconnectAllVoice();
     process.exit(0);
@@ -125,3 +138,4 @@ process.on('SIGTERM', () => {
     disconnectAllVoice();
     process.exit(0);
 });
+// 通常のコマンド実行エラーや例外ではBotはシャットダウンしません（致命的な場合のみプロセス終了）

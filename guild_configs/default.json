@@ -1,0 +1,13 @@
+{
+  "tts": {
+    "textChannelId": "",
+    "voiceChannelId": "",
+    "isReactionSpeach": true,
+    "excludeRegEx": "(?!)",
+    "memberSpeakerConfigs": {}
+  },
+  "dice": {
+    "diceChannel": null,
+    "system": "ShinobiGami"
+  }
+}

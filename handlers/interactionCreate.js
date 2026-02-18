@@ -9,14 +9,15 @@ export default async (interaction, data) => {
     }
 
     try {
-        // ttsコマンドの場合は ttsData を渡す
-        if (interaction.commandName === "tts") {
-            await command.execute(interaction, data);
-        } else {
-            await command.execute(interaction);
-        }
+        await command.execute(interaction, data);
     } catch (error) {
-        console.error(error);
+        // 詳細なエラー内容をログ出力
+        if (error instanceof Error) {
+            console.error('InteractionCreate Error:', error.message);
+            console.error('Stack Trace:', error.stack);
+        } else {
+            console.error('InteractionCreate Error:', error);
+        }
         if (interaction.replied || interaction.deferred) {
             await interaction.followUp({ content: 'error occurred while executing command.', ephemeral: true });
         } else {

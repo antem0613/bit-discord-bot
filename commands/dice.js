@@ -1,6 +1,6 @@
 import bcdice from 'bcdice';
 import { SlashCommandBuilder } from 'discord.js';
-import { saveData, editData } from '../editData.js';
+import { saveData } from '../editData.js';
 import { updateActivity } from '../main.js';
 
 const loader = new bcdice.DynamicLoader();
@@ -44,18 +44,56 @@ export const data = new SlashCommandBuilder()
                                   .setRequired(false)));
   
 
-export async function execute(interaction){
+export async function execute(interaction, data){
   const subCommand=interaction.options.getSubcommand();
+  const guildId = interaction.guildId;
   
   if(subCommand=="help"){
     var id = interaction.options.getString("system_id");
     
     if(id == null || id == ""){
-      await interaction.reply("## ダイス機能一覧\n- help これです。システムIDを併記することでシステム独自コマンドのヘルプが表示されます。\n- systems ゲームシステム一覧を見ることができるリンクを貼ります。\n- set ダイスボットの使用するゲームシステムを設定します。\n- roll コマンドでダイスを振ります。\n- info ダイスボットの情報を表示します。\nチャンネルに直接ダイスコマンドを入力してもダイスが振れます。")
+      await interaction.reply(`ヘルプ一覧
+- /dice help system_id]  
+　ダイス機能の使い方を表示します。system_idを指定すると、そのシステム独自のコマンドヘルプが表示されます。  
+　例: /dice help Cthulhu
+
+- /dice systems  
+　利用できるゲームシステムの一覧を表示します。  
+　→ [BCDice公式システムリスト](https://bcdice.org/systems/)
+
+- /dice set-system [system_id]  
+　ダイスボットの使用するゲームシステムを設定します。空欄の場合はデフォルト（DiceBot）になります。  
+　例: /dice set-system Cthulhu
+
+- /dice info  
+　Dice機能の情報（BCDiceのバージョンや現在のゲームシステム）を表示します。
+
+- /dice roll [コマンド]  
+　指定したコマンドでダイスを振ります。  
+　例: /dice roll 2d6+3  
+　コマンドは各ゲームシステムのルールに従って記述してください。
+
+- /dice set-channel [channel]  
+　ダイスボットの使用するチャンネルを設定します。TTSのチャンネルと同じにはできません。  
+　例: /dice set-channel #dice-channel
+- ダイスボットのチャンネルが未設定の場合、ダイスコマンドを送信すると「ダイスボットのチャンネルを先に設定してください」と表示されます。
+- テキストチャンネルに直接ダイスコマンド（例: 2d6+3）を入力してもダイスが振れます。
+- コマンドが正しくない場合は「コマンドが正しくありません」と表示されます。
+- シークレットダイスは ||結果|| のように隠して表示されます。`);
       return
     }
     else{
-      const gameSystem = await loader.dynamicLoad(id);
+      let gameSystem;
+      try {
+        gameSystem = await loader.dynamicLoad(id);
+      } catch (e) {
+        await interaction.reply(`システムID「${id}」の取得に失敗しました。IDが正しいか確認してください。`);
+        return;
+      }
+      if (!gameSystem || !gameSystem.HELP_MESSAGE) {
+        await interaction.reply(`システムID「${id}」のヘルプが取得できません。IDが正しいか確認してください。`);
+        return;
+      }
       await interaction.reply(gameSystem.HELP_MESSAGE);
       return;
     }
@@ -69,13 +107,12 @@ export async function execute(interaction){
   if(subCommand=="set-system"){
     var id = interaction.options.getString("system_id");
     
-    const defaultGuildId = 'default';
     if(id == null || id == ""){
-      editData.initGuildConfigIfUndefined(defaultGuildId).dice.system = "DiceBot";
+      data.initGuildConfigIfUndefined(guildId).dice.system = "DiceBot";
     } else {
-      editData.initGuildConfigIfUndefined(defaultGuildId).dice.system = id;
+      data.initGuildConfigIfUndefined(guildId).dice.system = id;
     }
-    editData.saveConfig(defaultGuildId);
+    data.saveConfig(guildId);
 
     saveData();
     
@@ -85,8 +122,7 @@ export async function execute(interaction){
   }
   
   if(subCommand=="info"){
-    const defaultGuildId = 'default';
-    const diceConfig = editData.initGuildConfigIfUndefined(defaultGuildId).dice;
+    const diceConfig = data.initGuildConfigIfUndefined(guildId).dice;
     await interaction.reply(">>> BCDice " + bcdice.Version + "\n現在のゲームシステム：" + diceConfig.system);
     return;
   }
@@ -104,8 +140,7 @@ export async function execute(interaction){
 
   if(subCommand=="set-channel"){
     const channel = interaction.options.getChannel("channel");
-    const guildId = interaction.guildId;
-    const config = editData.initGuildConfigIfUndefined(guildId);
+    const config = data.initGuildConfigIfUndefined(guildId);
     const diceConfig = config.dice;
 
     if (channel.id === config.tts.textChannelId) {
@@ -114,31 +149,43 @@ export async function execute(interaction){
     }
 
     diceConfig.diceChannel = channel.id;
-    editData.saveConfig(guildId);
+    data.saveConfig(guildId);
     await interaction.reply("ダイスチャンネルを"+channel.name +"に設定しました");
     return;
   }
 }
 
-export async function rollDice(command, guildId) {
-  const diceConfig = editData.initGuildConfigIfUndefined(guildId).dice;
+export async function rollDice(command, guildId, data) {
+  const diceConfig = data.initGuildConfigIfUndefined(guildId).dice;
   const system = diceConfig.system;
   var roll = String(command);
+  let GameSystem;
   try {
-    const GameSystem = await loader.dynamicLoad(system);
-    console.log(system + ", " + roll);
-    if(roll.match(GameSystem.COMMAND_PATTERN)){
-      const result = GameSystem.eval(roll);
-      console.log(result);
-      if(result.secret){
-        return "s"+result.text;
-      }
-      return result.text;
-    } else {
-      console.log("diceroll cannot execute");
-      return;
+    GameSystem = await loader.dynamicLoad(system);
+  } catch (e) {
+    console.log(`ダイスシステム「${system}」の取得に失敗:`, e);
+    return null;
+  }
+  if (!GameSystem || !GameSystem.COMMAND_PATTERN || typeof GameSystem.eval !== 'function') {
+    console.log(`ダイスシステム「${system}」が正しくロードできません。`);
+    return null;
+  }
+  console.log(system + ", " + roll);
+  if(roll.match(GameSystem.COMMAND_PATTERN)){
+    let result;
+    try {
+      result = GameSystem.eval(roll);
+    } catch (e) {
+      console.log("ダイスロールの評価に失敗:", e);
+      return null;
     }
-  } catch {
-    return;
+    console.log(result);
+    if(result && result.secret){
+      return "s"+result.text;
+    }
+    return result ? result.text : null;
+  } else {
+    console.log("diceroll cannot execute");
+    return null;
   }
 }
