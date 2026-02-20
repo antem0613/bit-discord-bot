@@ -1,7 +1,7 @@
 {
   "tts": {
     "textChannelId": "1440665688049188874",
-    "voiceChannelId": "708420382201479268",
+    "voiceChannelId": "1109073959477067786",
     "isReactionSpeach": true,
     "excludeRegEx": "(?!)",
     "memberSpeakerConfigs": {
@@ -117,7 +117,7 @@
   },
   "dice": {
     "diceChannel": "1417520911392706580",
-    "system": "SwordWorld2.5"
+    "system": "DiceBot"
   },
   "textChannelId": "1440665688049188874"
 }

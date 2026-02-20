@@ -105,9 +105,24 @@ export async function execute(interaction, data){
   }
   
   if(subCommand=="set-system"){
-    var id = interaction.options.getString("system_id");
-    
+    var id = null;
+
+    try{
+      id = await loader.dynamicLoad(interaction.options.getString("system_id"));
+    }
+    catch(e){
+      if(interaction.options.getString("system_id") == null || interaction.options.getString("system_id") == ""){
+        id = null;
+      }
+      else{
+        console.log(`Failure to load dice system "${interaction.options.getString("system_id")}" `);
+        await interaction.reply(`システムID「${interaction.options.getString("system_id")}」の取得に失敗しました。IDが正しいか確認してください。`);
+        return;
+      }
+    }
+
     if(id == null || id == ""){
+      id = "DiceBot";
       data.initGuildConfigIfUndefined(guildId).dice.system = "DiceBot";
     } else {
       data.initGuildConfigIfUndefined(guildId).dice.system = id;
@@ -116,6 +131,7 @@ export async function execute(interaction, data){
 
     saveData();
     
+    console.log(`Guild ${guildId} set dice system to ${id}`);
     await interaction.reply(`ゲームシステムを${id}に変更しました!`);
     updateActivity();
     return;
