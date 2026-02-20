@@ -105,16 +105,13 @@ export async function execute(interaction, data){
   }
   
   if(subCommand=="set-system"){
-    var id = null;
+    var id = interaction.options.getString("system_id");
 
     try{
-      id = await loader.dynamicLoad(interaction.options.getString("system_id"));
+      await loader.dynamicLoad(interaction.options.getString("system_id"));
     }
     catch(e){
-      if(interaction.options.getString("system_id") == null || interaction.options.getString("system_id") == ""){
-        id = null;
-      }
-      else{
+      if(id != null && id != ""){
         console.log(`Failure to load dice system "${interaction.options.getString("system_id")}" `);
         await interaction.reply(`システムID「${interaction.options.getString("system_id")}」の取得に失敗しました。IDが正しいか確認してください。`);
         return;
