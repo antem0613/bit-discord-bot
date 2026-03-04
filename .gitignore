@@ -10,8 +10,8 @@
 *.userosscache
 *.sln.docstates
 *.env
-**/guild_configs/*
-**/guild_dictionaries/*
+/guild_configs/
+/guild_dictionaries/
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
