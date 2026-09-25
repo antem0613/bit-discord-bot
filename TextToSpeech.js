@@ -33,8 +33,6 @@ async function TextToSpeech(splitedText, speaker, player, queue){
       deQueue(queue, ticket);
       return;
     }
-
-    await setTimeout(envQueuePollingInterval);
         
     if(!queue.includes(ticket)) return; // キューから削除されていた場合は終了
     
@@ -102,7 +100,6 @@ async function voiceSynthesis(text, speaker){
       "method": "POST",
       "headers": { "accept": "audio/wav", "Content-Type": "application/json" },
       "body": JSON.stringify(audioQuery),
-      setTimeout: 60000
     });
   } catch (err) {
     console.error('Fetch error:', err);
