@@ -1,0 +1,35 @@
+services:
+  web:
+    build: .
+    container_name: web
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - DATABASE_URL=postgresql://user:xR7%5QMxyS6$@db:5433/schedulerdb?schema=public
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
+      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
+      - DISCORD_REDIRECT_URI=${DISCORD_REDIRECT_URI}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
+      - SESSION_SECRET=${SESSION_SECRET}
+    depends_on:
+      - db
+  
+  db:
+    image: postgres:15-alpine
+    container_name: db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: xR7%5QMxyS6$
+      POSTGRES_DB: schedulerdb
+      PGPORT: 5433
+    ports:
+      - "5433:5433"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+  
+volumes:
+  db-data:

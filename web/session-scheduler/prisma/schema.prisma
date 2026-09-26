@@ -1,0 +1,126 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SchedulingStatus {
+  SCHEDULING
+  FINALIZED
+  CANCELLED
+  COMPLETED
+}
+
+enum SessionRoom {
+  Room1
+  Room2
+  Room3
+  Room4
+  OtherServer
+}
+
+// 候補日ごとの参加者の回答記号（〇・△・×・？）
+enum AvailabilitySymbol {
+  CIRCLE
+  TRIANGLE
+  CROSS
+  UNKNOWN
+}
+
+// Discordで認証したユーザー（対象サーバーのメンバー）
+model Member {
+  id          String  @id // Discord user ID
+  username    String
+  displayName String? // 対象サーバーでのサーバープロフィール（ニックネーム）
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdEvents Event[]            @relation("EventCreator")
+  responses     ScheduleResponse[]
+}
+
+model Event {
+  id          String           @id @default(uuid())
+  title       String
+  description String
+  status      SchedulingStatus @default(SCHEDULING)
+
+  creator   Member @relation("EventCreator", fields: [creatorId], references: [id])
+  creatorId String
+
+  // 日程調整の回答期限（作成者が設定、任意）。期限を過ぎると自動的に締め切り扱いになる
+  schedulingDeadline DateTime?
+  // 作成者が任意のタイミングで手動締め切りした日時
+  closedAt           DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  candidateDates EventCandidateDate[]
+  symbolLabels   EventSymbolLabel[]
+  responses      ScheduleResponse[]
+  finalDates     EventFinalDate[]
+}
+
+// 日程調整の候補日。連続している必要はない
+model EventCandidateDate {
+  id      String   @id @default(uuid())
+  event   Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId String
+  date    DateTime @db.Date
+
+  responses ScheduleResponse[]
+
+  @@unique([eventId, date])
+}
+
+// 回答記号(〇・△・×・？)ごとに作成者が設定する意味のラベル
+model EventSymbolLabel {
+  id      String             @id @default(uuid())
+  event   Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId String
+  symbol  AvailabilitySymbol
+  label   String
+
+  @@unique([eventId, symbol])
+}
+
+// 候補日ごとの参加者の回答。回答すること自体が参加表明を兼ねる
+model ScheduleResponse {
+  id String @id @default(uuid())
+
+  candidateDate   EventCandidateDate @relation(fields: [candidateDateId], references: [id], onDelete: Cascade)
+  candidateDateId String
+  event           Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId         String
+  member          Member             @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberId        String
+
+  symbol    AvailabilitySymbol
+  updatedAt DateTime @updatedAt
+
+  @@unique([candidateDateId, memberId])
+}
+
+// 最終確定した実施日（複数日・非連続も可）とセッション部屋の予約
+model EventFinalDate {
+  id      String       @id @default(uuid())
+  event   Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId String
+  date    DateTime     @db.Date
+  room    SessionRoom?
+
+  @@unique([eventId, date])
+  // 同日・同部屋の重複予約を防止（roomがnullの行同士はPostgres上で重複とみなされない）
+  @@unique([date, room])
+}
