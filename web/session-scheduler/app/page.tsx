@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { getSession } from "@/lib/discord-auth";
-import { prisma } from "@/lib/prisma";
-import { isResponseClosed } from "@/lib/events";
 import { getCalendarMonthData } from "@/lib/calendar";
+import { jstToday } from "@/lib/calendar-grid";
+import { getEventListItems, type EventListFilter } from "@/lib/event-list";
 import CalendarWidget from "@/app/components/CalendarWidget";
+import EventListPanel from "@/app/components/EventListPanel";
+import Image from "next/image";
 
 const ERROR_MESSAGES: Record<string, string> = {
   not_member: "対象サーバーのメンバーのみログインできます。",
@@ -11,40 +13,34 @@ const ERROR_MESSAGES: Record<string, string> = {
   login_failed: "ログイン処理中にエラーが発生しました。",
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  SCHEDULING: "調整中",
-  FINALIZED: "確定済み",
-  CANCELLED: "キャンセル",
-  COMPLETED: "終了",
-};
-
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+    searchParams: Promise<{ error?: string; listFilter?: string }>;
 }) {
-  const now = new Date();
-  const [user, { error }, calendarData, events] = await Promise.all([
-    getSession(),
-    searchParams,
+  const [user, { error, listFilter }] = await Promise.all([getSession(), searchParams]);
+  const filter: EventListFilter = listFilter === "confirmed" || listFilter === "mine" ? listFilter : "status";
+  const now = jstToday();
+  const [calendarData, events] = await Promise.all([
     getCalendarMonthData(now.getUTCFullYear(), now.getUTCMonth()),
-    prisma.event.findMany({
-      orderBy: { createdAt: "desc" },
-      include: { creator: true, candidateDates: true },
-    }),
+    getEventListItems(filter, user?.id),
   ]);
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {error && ERROR_MESSAGES[error] && (
-          <p className="text-sm text-red-600 dark:text-red-400">{ERROR_MESSAGES[error]}</p>
-        )}
-        <div className="ml-auto flex items-center gap-4 text-sm">
+    <div className=" flex-col gap-6">
+      <header className="p-4 flex items-center">
+        <Image src='/kusozako_icon.png' alt='アイコン' width={50} height={50} />
+        <h1 className=" text-xl font-bold">
+          クソザコダイス君
+        </h1>
+        <h2 className="ml-4">
+          日程調整ページ
+        </h2>
+        <div className="ml-auto flex gap-4 text-sm items-center">
           {user ? (
             <>
               <span>
-                ようこそ、<span className="font-semibold">{user.displayName}</span> さん
+                <span className="text-gray-400"> ログイン中 </span>  <span className="font-semibold">{user.displayName}</span>
               </span>
               <form action="/api/auth/logout" method="post">
                 <button type="submit" className="rounded-full border px-4 py-1.5 hover:bg-black/4 dark:hover:bg-white/10">
@@ -58,43 +54,35 @@ export default async function Home({
             </a>
           )}
         </div>
+      </header>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {error && ERROR_MESSAGES[error] && (
+          <p className="text-sm text-red-600 dark:text-red-400">{ERROR_MESSAGES[error]}</p>
+        )}
+
       </div>
 
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+      <div className="mx-auto w-full max-w-6xl flex flex-col gap-6 lg:flex-row lg:items-start">
         <CalendarWidget initial={calendarData} />
 
         <aside className="w-full shrink-0 lg:w-80">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-medium">イベント一覧</h2>
             {user && (
-              <Link href="/events/new" className="rounded-full bg-[#5865F2] px-3 py-1 text-xs font-medium text-white">
+              <Link href="/events/new" className="rounded-full bg-[#5865F2] px-3 py-2 text-md font-medium text-white">
                 新規作成
               </Link>
             )}
           </div>
 
-          {events.length === 0 && <p className="text-sm text-zinc-600 dark:text-zinc-400">まだイベントがありません。</p>}
-
-          <ul className="flex flex-col gap-2">
-            {events.map((event) => {
-              const closed = isResponseClosed(event);
-              return (
-                <li key={event.id} className="rounded border p-3 text-sm">
-                  <Link href={`/events/${event.id}`} className="font-medium underline">
-                    {event.title}
-                  </Link>
-                  <div className="mt-1 flex flex-col gap-0.5 text-xs text-zinc-600 dark:text-zinc-400">
-                    <span>作成者: {event.creator.displayName ?? event.creator.username}</span>
-                    <span>候補日: {event.candidateDates.length}件</span>
-                    <span>
-                      状態: {STATUS_LABELS[event.status] ?? event.status}
-                      {event.status === "SCHEDULING" && `（${closed ? "受付終了" : "受付中"}）`}
-                    </span>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <EventListPanel
+            basePath="/"
+            filter={filter}
+            events={events}
+            showMineFilter={Boolean(user)}
+            listClassName="flex max-h-[80vh] flex-col gap-2 overflow-y-auto pr-1"
+            itemClassName="rounded border p-3 text-sm bg-white dark:bg-zinc-800"
+          />
         </aside>
       </div>
     </div>

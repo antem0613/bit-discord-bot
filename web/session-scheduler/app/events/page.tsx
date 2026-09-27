@@ -1,22 +1,16 @@
 import Link from "next/link";
 import { getSession } from "@/lib/discord-auth";
-import { prisma } from "@/lib/prisma";
-import { isResponseClosed } from "@/lib/events";
+import { getEventListItems, type EventListFilter } from "@/lib/event-list";
+import EventListPanel from "@/app/components/EventListPanel";
 
-const STATUS_LABELS: Record<string, string> = {
-  SCHEDULING: "調整中",
-  FINALIZED: "確定済み",
-  CANCELLED: "キャンセル",
-  COMPLETED: "終了",
-};
-
-export default async function EventsPage() {
-  const user = await getSession();
-
-  const events = await prisma.event.findMany({
-    orderBy: { createdAt: "desc" },
-    include: { creator: true, candidateDates: true },
-  });
+export default async function EventsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ listFilter?: string }>;
+}) {
+  const [user, { listFilter }] = await Promise.all([getSession(), searchParams]);
+  const filter: EventListFilter = listFilter === "confirmed" || listFilter === "mine" ? listFilter : "status";
+  const events = await getEventListItems(filter, user?.id);
 
   return (
     <div className="mx-auto w-full max-w-3xl p-8">
@@ -33,26 +27,7 @@ export default async function EventsPage() {
         )}
       </div>
 
-      {events.length === 0 && <p className="text-zinc-600 dark:text-zinc-400">まだイベントがありません。</p>}
-
-      <ul className="flex flex-col gap-3">
-        {events.map((event) => {
-          const closed = isResponseClosed(event);
-          return (
-            <li key={event.id} className="rounded border p-4">
-              <Link href={`/events/${event.id}`} className="font-medium underline">
-                {event.title}
-              </Link>
-              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-zinc-600 dark:text-zinc-400">
-                <span>作成者: {event.creator.displayName ?? event.creator.username}</span>
-                <span>候補日: {event.candidateDates.length}件</span>
-                <span>状態: {STATUS_LABELS[event.status] ?? event.status}</span>
-                {event.status === "SCHEDULING" && <span>{closed ? "受付終了" : "受付中"}</span>}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+      <EventListPanel basePath="/events" filter={filter} events={events} showMineFilter={Boolean(user)} />
     </div>
   );
 }

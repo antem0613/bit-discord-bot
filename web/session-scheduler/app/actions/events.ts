@@ -10,8 +10,10 @@ import {
   SYMBOL_ORDER,
   ensureEventClosed,
   findRoomConflicts,
+  isPastDeadline,
   isResponseClosed,
 } from "@/lib/events";
+import dayjs from "@/lib/dayjs";
 
 // Thrown for expected validation/permission failures; the message is shown to the user via a redirect.
 class ActionError extends Error {}
@@ -24,28 +26,37 @@ function parseDateOnly(value: string): Date {
   return date;
 }
 
-export async function createEvent(formData: FormData) {
+// Shared by create and reschedule: an empty deadline is allowed, but a set one must be strictly in the future.
+// The `datetime-local` input has no timezone of its own, so it's always interpreted as Japan time.
+function parseDeadline(raw: string): Date | null {
+  if (!raw) return null;
+  const parsed = dayjs.tz(raw, "Asia/Tokyo");
+  if (!parsed.isValid()) {
+    throw new ActionError("回答期限の形式が正しくありません");
+  }
+  if (parsed.valueOf() <= Date.now()) {
+    throw new ActionError("回答期限には現在より後の日時を指定してください");
+  }
+  return parsed.toDate();
+}
+
+export type CreateEventState = { error: string } | undefined;
+
+// Returns `{ error }` instead of redirecting on failure so the form (via useActionState) stays mounted
+// with everything the user already typed/selected intact.
+export async function createEvent(_prevState: CreateEventState, formData: FormData): Promise<CreateEventState> {
   const session = await getSession();
   if (!session) redirect("/?error=login_failed");
 
   try {
     const title = String(formData.get("title") ?? "").trim();
     const description = String(formData.get("description") ?? "").trim();
-    const deadlineRaw = String(formData.get("schedulingDeadline") ?? "").trim();
-    const datesRaw = String(formData.get("candidateDates") ?? "");
+    const schedulingDeadline = parseDeadline(String(formData.get("schedulingDeadline") ?? "").trim());
+    const dateStrings = Array.from(new Set(formData.getAll("candidateDates").map(String).filter(Boolean)));
 
     if (!title) throw new ActionError("タイトルを入力してください");
-
-    const dateStrings = Array.from(
-      new Set(
-        datesRaw
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter(Boolean)
-      )
-    );
     if (dateStrings.length === 0) {
-      throw new ActionError("候補日を1つ以上入力してください");
+      throw new ActionError("候補日を1つ以上選択してください");
     }
 
     const candidateDates = dateStrings.map((d) => ({ date: parseDateOnly(d) }));
@@ -59,7 +70,7 @@ export async function createEvent(formData: FormData) {
         title,
         description,
         creatorId: session.id,
-        schedulingDeadline: deadlineRaw ? new Date(deadlineRaw) : null,
+        schedulingDeadline,
         candidateDates: { create: candidateDates },
         symbolLabels: { create: symbolLabels },
       },
@@ -68,13 +79,14 @@ export async function createEvent(formData: FormData) {
     redirect(`/events/${event.id}`);
   } catch (error) {
     if (error instanceof ActionError) {
-      redirect(`/events/new?error=${encodeURIComponent(error.message)}`);
+      return { error: error.message };
     }
     throw error;
   }
 }
 
-export async function submitResponses(eventId: string, formData: FormData) {
+// Selects (or switches) the current member's answer for a single candidate date; upsert enforces one symbol per member/date.
+export async function selectResponse(eventId: string, candidateDateId: string, symbol: AvailabilitySymbol) {
   const session = await getSession();
   if (!session) redirect("/?error=login_failed");
 
@@ -82,26 +94,25 @@ export async function submitResponses(eventId: string, formData: FormData) {
     await ensureEventClosed(eventId);
     const event = await prisma.event.findUnique({
       where: { id: eventId },
-      select: { status: true, closedAt: true, schedulingDeadline: true, candidateDates: { select: { id: true } } },
+      select: { status: true, closedAt: true, schedulingDeadline: true },
     });
     if (!event) throw new ActionError("イベントが見つかりません");
     if (isResponseClosed(event)) throw new ActionError("回答の受付は終了しています");
+    if (!SYMBOL_ORDER.includes(symbol)) throw new ActionError("不正な回答記号です");
 
-    const validIds = new Set(event.candidateDates.map((c) => c.id));
+    const candidateDate = await prisma.eventCandidateDate.findUnique({
+      where: { id: candidateDateId },
+      select: { eventId: true },
+    });
+    if (!candidateDate || candidateDate.eventId !== eventId) {
+      throw new ActionError("候補日が見つかりません");
+    }
 
-    await prisma.$transaction(
-      Array.from(validIds)
-        .map((candidateDateId) => {
-          const symbol = String(formData.get(`symbol_${candidateDateId}`) ?? "");
-          if (!SYMBOL_ORDER.includes(symbol as AvailabilitySymbol)) return null;
-          return prisma.scheduleResponse.upsert({
-            where: { candidateDateId_memberId: { candidateDateId, memberId: session.id } },
-            create: { candidateDateId, eventId, memberId: session.id, symbol: symbol as AvailabilitySymbol },
-            update: { symbol: symbol as AvailabilitySymbol },
-          });
-        })
-        .filter((query) => query !== null)
-    );
+    await prisma.scheduleResponse.upsert({
+      where: { candidateDateId_memberId: { candidateDateId, memberId: session.id } },
+      create: { candidateDateId, eventId, memberId: session.id, symbol },
+      update: { symbol },
+    });
   } catch (error) {
     if (error instanceof ActionError) {
       redirect(`/events/${eventId}?error=${encodeURIComponent(error.message)}`);
@@ -126,6 +137,35 @@ export async function closeEvent(eventId: string) {
     if (event.status === SchedulingStatus.SCHEDULING && event.closedAt === null) {
       await prisma.event.update({ where: { id: eventId }, data: { closedAt: new Date() } });
     }
+  } catch (error) {
+    if (error instanceof ActionError) {
+      redirect(`/events/${eventId}?error=${encodeURIComponent(error.message)}`);
+    }
+    throw error;
+  }
+
+  revalidatePath(`/events/${eventId}`);
+}
+
+export async function reopenEvent(eventId: string) {
+  const session = await getSession();
+  if (!session) redirect("/?error=login_failed");
+
+  try {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { creatorId: true, status: true, closedAt: true, schedulingDeadline: true },
+    });
+    if (!event) throw new ActionError("イベントが見つかりません");
+    if (event.creatorId !== session.id) throw new ActionError("イベント作成者のみ操作できます");
+    if (event.status !== SchedulingStatus.SCHEDULING) {
+      throw new ActionError("このイベントはすでに確定済み、またはキャンセルされています");
+    }
+    if (event.closedAt === null) throw new ActionError("受付は締め切られていません");
+    // A deadline-based closure must stay closed; only a manual, still-before-deadline closure can be reopened.
+    if (isPastDeadline(event)) throw new ActionError("回答期限を過ぎているため再開できません");
+
+    await prisma.event.update({ where: { id: eventId }, data: { closedAt: null } });
   } catch (error) {
     if (error instanceof ActionError) {
       redirect(`/events/${eventId}?error=${encodeURIComponent(error.message)}`);
@@ -191,3 +231,83 @@ export async function finalizeEvent(eventId: string, formData: FormData) {
   revalidatePath(`/events/${eventId}`);
   revalidatePath("/");
 }
+
+export async function cancelEvent(eventId: string) {
+  const session = await getSession();
+  if (!session) redirect("/?error=login_failed");
+
+  try {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { creatorId: true, status: true },
+    });
+    if (!event) throw new ActionError("イベントが見つかりません");
+    if (event.creatorId !== session.id) throw new ActionError("イベント作成者のみ操作できます");
+    if (event.status !== SchedulingStatus.FINALIZED) {
+      throw new ActionError("確定済みのイベントのみキャンセルできます");
+    }
+
+    await prisma.event.update({ where: { id: eventId }, data: { status: SchedulingStatus.CANCELLED } });
+  } catch (error) {
+    if (error instanceof ActionError) {
+      redirect(`/events/${eventId}?error=${encodeURIComponent(error.message)}`);
+    }
+    throw error;
+  }
+
+  revalidatePath(`/events/${eventId}`);
+  revalidatePath("/");
+}
+
+// Restarts scheduling from a finalized event: clears final dates/candidate dates/labels/responses and takes fresh input for everything except title and description.
+export async function rescheduleEvent(eventId: string, formData: FormData) {
+  const session = await getSession();
+  if (!session) redirect("/?error=login_failed");
+
+  try {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { creatorId: true, status: true },
+    });
+    if (!event) throw new ActionError("イベントが見つかりません");
+    if (event.creatorId !== session.id) throw new ActionError("イベント作成者のみ操作できます");
+    if (event.status !== SchedulingStatus.FINALIZED) {
+      throw new ActionError("確定済みのイベントのみ再調整できます");
+    }
+
+    const schedulingDeadline = parseDeadline(String(formData.get("schedulingDeadline") ?? "").trim());
+    const dateStrings = Array.from(new Set(formData.getAll("candidateDates").map(String).filter(Boolean)));
+    if (dateStrings.length === 0) throw new ActionError("候補日を1つ以上選択してください");
+
+    const candidateDates = dateStrings.map((d) => ({ date: parseDateOnly(d) }));
+    const symbolLabels = SYMBOL_ORDER.map((symbol) => {
+      const raw = String(formData.get(`label_${symbol}`) ?? "").trim();
+      return { symbol, label: raw || DEFAULT_SYMBOL_LABELS[symbol] };
+    });
+
+    await prisma.$transaction([
+      prisma.eventFinalDate.deleteMany({ where: { eventId } }),
+      prisma.eventCandidateDate.deleteMany({ where: { eventId } }), // cascades to ScheduleResponse
+      prisma.eventSymbolLabel.deleteMany({ where: { eventId } }),
+      prisma.event.update({
+        where: { id: eventId },
+        data: {
+          status: SchedulingStatus.SCHEDULING,
+          closedAt: null,
+          schedulingDeadline,
+          candidateDates: { create: candidateDates },
+          symbolLabels: { create: symbolLabels },
+        },
+      }),
+    ]);
+
+    revalidatePath("/");
+    redirect(`/events/${eventId}`);
+  } catch (error) {
+    if (error instanceof ActionError) {
+      redirect(`/events/${eventId}/reschedule?error=${encodeURIComponent(error.message)}`);
+    }
+    throw error;
+  }
+}
+

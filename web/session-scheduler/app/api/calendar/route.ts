@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCalendarMonthData } from "@/lib/calendar";
+import { jstToday } from "@/lib/calendar-grid";
 
 export async function GET(request: NextRequest) {
-  const now = new Date();
+  const now = jstToday();
   const yParam = request.nextUrl.searchParams.get("y");
   const mParam = request.nextUrl.searchParams.get("m");
 

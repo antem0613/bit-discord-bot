@@ -1,8 +1,9 @@
 import { SchedulingStatus, SessionRoom } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import dayjs from "@/lib/dayjs";
 
 export { toDateKey } from "@/lib/calendar-grid";
-export { SYMBOL_ORDER, DEFAULT_SYMBOL_LABELS, SYMBOL_MARKS, ROOM_LABELS } from "@/lib/event-constants";
+export { SYMBOL_ORDER, DEFAULT_SYMBOL_LABELS, SYMBOL_MARKS, SYMBOL_SCORES, ROOM_LABELS } from "@/lib/event-constants";
 
 type EventForStatus = {
   status: SchedulingStatus;
@@ -10,12 +11,17 @@ type EventForStatus = {
   schedulingDeadline: Date | null;
 };
 
-export function isPastDeadline(event: EventForStatus, now: Date = new Date()): boolean {
-  return event.schedulingDeadline !== null && event.schedulingDeadline <= now;
+export function isPastDeadline(event: EventForStatus, now = dayjs().tz()): boolean {
+  return event.schedulingDeadline !== null && dayjs(event.schedulingDeadline).tz() <= now;
+}
+
+// Formats `date` as a Japan-time `datetime-local` input value so the deadline field can reject past values.
+export function toDateTimeLocalMin(date: Date = new Date()): string {
+  return dayjs(date).tz().format("YYYY-MM-DDTHH:mm");
 }
 
 // True once responses/participation are no longer accepted, whether closed manually or by deadline.
-export function isResponseClosed(event: EventForStatus, now: Date = new Date()): boolean {
+export function isResponseClosed(event: EventForStatus, now = dayjs().tz()): boolean {
   return event.status !== SchedulingStatus.SCHEDULING || event.closedAt !== null || isPastDeadline(event, now);
 }
 

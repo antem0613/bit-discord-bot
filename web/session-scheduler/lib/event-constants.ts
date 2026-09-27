@@ -22,10 +22,18 @@ export const SYMBOL_MARKS: Record<AvailabilitySymbol, string> = {
   UNKNOWN: "？",
 };
 
+// Used to score each candidate date so the best-attended day can be highlighted.
+export const SYMBOL_SCORES: Record<AvailabilitySymbol, number> = {
+  CIRCLE: 1,
+  TRIANGLE: 0.5,
+  CROSS: -1,
+  UNKNOWN: 0,
+};
+
 export const ROOM_LABELS: Record<SessionRoom, string> = {
-  Room1: "第1会議室",
-  Room2: "第2会議室",
-  Room3: "第3会議室",
-  Room4: "第4会議室",
+  Room1: "セッション部屋１",
+  Room2: "セッション部屋２",
+  Room3: "セッション部屋３",
+  Room4: "セッション部屋４",
   OtherServer: "他サーバー",
 };

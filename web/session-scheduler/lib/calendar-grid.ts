@@ -1,14 +1,31 @@
 // Pure date/grid helpers with no server-only dependencies, safe to import from Client Components.
 
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000; // Japan has no DST, so a fixed UTC+9 offset is always correct.
+
+// Reinterprets `instant` as a UTC-midnight Date encoding today's calendar day in Japan time, so the
+// existing UTC-getter-based grid/key helpers below transparently operate on the JST calendar day.
+export function jstToday(instant: Date = new Date()): Date {
+  const jst = new Date(instant.getTime() + JST_OFFSET_MS);
+  return new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate()));
+}
+
 export function toDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+const MAX_MONTHS_AHEAD = 12;
+
+// Clamps to the displayable range: from the current month up to `MAX_MONTHS_AHEAD` months ahead.
 export function clampToCurrentOrLater(year: number, month: number, now: Date): { year: number; month: number } {
   const currentYear = now.getUTCFullYear();
   const currentMonth = now.getUTCMonth();
   if (year < currentYear || (year === currentYear && month < currentMonth)) {
     return { year: currentYear, month: currentMonth };
+  }
+
+  const max = shiftMonth(currentYear, currentMonth, MAX_MONTHS_AHEAD);
+  if (year > max.year || (year === max.year && month > max.month)) {
+    return max;
   }
   return { year, month };
 }
