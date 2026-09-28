@@ -149,7 +149,7 @@ export default function CalendarWidget({ initial }: { initial: CalendarMonthData
             <ul className="flex max-h-[10vh] flex-col gap-2 overflow-y-auto pr-1">
               {selectedEvents.map((e) => (
                 <li key={e.id}>
-                  <Link href={`/events/${e.id}`} className={`bg-slate-400/20 hover:bg-slate-400/30 dark:bg-white/20 dark:hover:bg-white/10 rounded-lg p-1 ${e.cancelled ? "line-through opacity-70" : ""} 
+                  <Link href={`/events/${e.id}`} className={`bg-slate-400/10 hover:bg-slate-400/30 dark:bg-white/20 dark:hover:bg-white/10 rounded-lg p-1 ${e.cancelled ? "line-through opacity-70" : ""} 
                   ${e.room === 'Room1' ? "text-rose-700 dark:text-rose-300" :
                       e.room === 'Room2' ? "text-lime-700 dark:text-green-300" :
                         e.room === "Room3" ? "text-blue-700 dark:text-blue-300" :

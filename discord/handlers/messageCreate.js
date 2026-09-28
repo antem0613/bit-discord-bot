@@ -3,11 +3,14 @@ import { getVoiceConnection } from "@discordjs/voice";
 import { TextToSpeech } from "../TextToSpeech.js";
 import { enqueueTTSJob } from "../commands/tts.js";
 import { TextPreprocessor } from "../textPreprocessor.js";
+import { EmbedBuilder } from "discord.js";
 
 export default async (message, data) => {
   const guildId = message.guildId;
   const diceChannel = data.GuildConfigs[guildId]?.dice?.diceChannel;
   const ttsChannel = data.GuildConfigs[guildId]?.tts?.textChannelId;
+  const displayName = message.member ? message.member.displayName : message.author.username;
+  const avatarUrl = message.member ? message.member.displayAvatarURL() : message.author.displayAvatarURL();
 
   if (message.channel.id == diceChannel || ((diceChannel == null || diceChannel === "" || diceChannel === undefined) && message.channel.id != ttsChannel)) {
     try{
@@ -18,10 +21,24 @@ export default async (message, data) => {
           message.channel.send("ダイスボットのチャンネルを先に設定してください。");
         }
         else if (res.startsWith("s")) {
-          message.channel.send("||" + res + "||");
+          const embed = new EmbedBuilder()
+            .setAuthor({
+              name: displayName,
+              iconURL: avatarUrl
+            })
+            .setDescription("||" + res + "||");
+
+          message.channel.send({ embeds: [embed] });
         }
         else{
-          message.channel.send(res);
+          const embed = new EmbedBuilder()
+            .setAuthor({
+              name: displayName,
+              iconURL: avatarUrl
+            })
+            .setDescription(res);
+
+          message.channel.send({ embeds: [embed] });
         }
       }
     }

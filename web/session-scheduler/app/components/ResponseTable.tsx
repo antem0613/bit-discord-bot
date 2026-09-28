@@ -105,7 +105,7 @@ export default function ResponseTable({
         <aside className="w-full shrink-0 p-4 text-sm lg:w-64">
           <h3 className="mb-2 font-medium">{selectedRow.dateKey} の回答者</h3>
           {selectedResponders.length > 0 ? (
-            <ul className="flex flex-col gap-1">
+                      <ul className="flex flex-col gap-1 max-h-[20vh] overflow-y-auto">
               {selectedResponders.map((responder, index) => (
                 <li key={index} className="flex items-center justify-between gap-2">
                   <span>{responder.name}</span>
