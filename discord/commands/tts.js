@@ -74,9 +74,9 @@ const defaultAudioQuery = {
 // 話者の情報を取得
 const speakersWithStyles = (async () => {
     const result = [];
-    const url = envVoiceServer;
+
     try {
-        const response = await fetch(url + "/speakers", {
+        const response = await fetch(envVoiceServer + "/speakers", {
             headers: { "accept": "application/json" },
         });
         if (!response.ok) {
@@ -95,7 +95,7 @@ const speakersWithStyles = (async () => {
         }
         return result;
     } catch (err) {
-        console.error("VOICEVOXサーバーへの接続に失敗:", err);
+        console.error("VOICEVOXサーバー", envVoiceServer, "への接続に失敗:", err);
         return [];
     }
 })();

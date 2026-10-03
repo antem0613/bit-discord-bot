@@ -75,6 +75,7 @@ export function buildAuthorizeUrl(state: string): string {
     scope: "identify guilds.members.read",
     state,
   });
+  console.log("Building Discord authorize URL", `${DISCORD_API}/oauth2/authorize?${params.toString()}`);
   return `${DISCORD_API}/oauth2/authorize?${params.toString()}`;
 }
 
