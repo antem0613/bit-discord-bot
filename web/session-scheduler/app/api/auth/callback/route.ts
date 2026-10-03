@@ -20,14 +20,14 @@ export async function GET(request: NextRequest) {
   cookieStore.delete(STATE_COOKIE);
 
   if (!code || !state || !savedState || state !== savedState) {
-    return NextResponse.redirect(new URL("/?error=invalid_state", `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/callback`));
+    return NextResponse.redirect(new URL("/?error=invalid_state", request.nextUrl.origin));
   }
 
   try {
     const accessToken = await exchangeCodeForToken(code);
     const member = await fetchGuildMember(accessToken);
     if (!member) {
-      return NextResponse.redirect(new URL("/?error=not_member", `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/callback`));
+      return NextResponse.redirect(new URL("/?error=not_member", request.nextUrl.origin));
     }
 
     const displayName = member.nick ?? member.user.global_name ?? member.user.username;
@@ -56,8 +56,8 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("Discord login failed:", error);
-    return NextResponse.redirect(new URL("/?error=login_failed", `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/callback`));
+    return NextResponse.redirect(new URL("/?error=login_failed", request.nextUrl.origin));
   }
 
-  return NextResponse.redirect(new URL("/", `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/callback`));
+  return NextResponse.redirect(new URL("/", request.nextUrl.origin));
 }

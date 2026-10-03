@@ -5,8 +5,18 @@ import Link from "next/link";
 import { createEvent } from "@/app/actions/events";
 import { DEFAULT_SYMBOL_LABELS, SYMBOL_MARKS, SYMBOL_ORDER } from "@/lib/event-constants";
 import CandidateDatePicker from "@/app/components/CandidateDatePicker";
+import ParticipantPicker from "@/app/components/ParticipantPicker";
+import type { GuildMemberSummary } from "@/lib/discord-auth";
 
-export default function CreateEventForm({ deadlineMin }: { deadlineMin: string }) {
+export default function CreateEventForm({
+  deadlineMin,
+  initialDates = [],
+  guildMembers = [],
+}: {
+  deadlineMin: string;
+  initialDates?: string[];
+  guildMembers?: GuildMemberSummary[];
+}) {
   const [state, formAction, pending] = useActionState(createEvent, undefined);
 
   return (
@@ -25,7 +35,7 @@ export default function CreateEventForm({ deadlineMin }: { deadlineMin: string }
 
       <div className="flex flex-col gap-1">
         <span className="text-sm font-medium">候補日（連続していなくても可）</span>
-        <CandidateDatePicker name="candidateDates" />
+        <CandidateDatePicker name="candidateDates" initialDates={initialDates} />
       </div>
 
       <label className="flex flex-col gap-1">
@@ -51,6 +61,11 @@ export default function CreateEventForm({ deadlineMin }: { deadlineMin: string }
           </label>
         ))}
       </fieldset>
+
+      <div className="flex flex-col gap-1">
+        <span className="text-sm font-medium">参加者をあらかじめ設定（任意）</span>
+        <ParticipantPicker name="participantIds" members={guildMembers} />
+      </div>
 
       <div className="flex items-center gap-4">
         <button type="submit" disabled={pending} className="rounded-full bg-[#5865F2] px-5 py-2 font-medium text-white disabled:opacity-50">

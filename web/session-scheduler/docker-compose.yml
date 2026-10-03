@@ -3,17 +3,23 @@ services:
     build: .
     container_name: web
     ports:
-      - "3002:3002"
+      - "3000:3000"
     volumes:
       - .:/app
       - /app/node_modules
       - /app/.next
     environment:
-      - DATABASE_URL=${DATABASE_URL}
+      # Overrides the host-facing DATABASE_URL from .env (which points at "localhost", correct for
+      # host-side `npx prisma` commands): inside this container "localhost" means the container
+      # itself, not the "db" service, so we address the database by its compose service name instead.
+      - DATABASE_URL=postgresql://user:xR7%255QMxyS6$@db:5433/schedulerdb?schema=public
       - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
       - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
       - DISCORD_REDIRECT_URI=${DISCORD_REDIRECT_URI}
       - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - BOT_EVENTS_SECRET=${BOT_EVENTS_SECRET}
+      - SITE_BASE_URL=${SITE_BASE_URL}
       - SESSION_SECRET=${SESSION_SECRET}
     depends_on:
       - db

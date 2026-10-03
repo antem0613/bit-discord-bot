@@ -2,56 +2,161 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { buildMonthGrid, clampToCurrentOrLater, jstToday, shiftMonth, toDateKey } from "@/lib/calendar-grid";
+import { addDays, buildMonthGrid, clampToCurrentOrLater, jstToday, parseDateKey, shiftMonth, toDateKey } from "@/lib/calendar-grid";
 import { ROOM_LABELS } from "@/lib/event-constants";
-import type { CalendarMonthData } from "@/lib/calendar";
+import type { CalendarDayData, CalendarMonthData } from "@/lib/calendar";
 import { LucideChevronLeft, LucideChevronRight } from "lucide-react";
 
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 const MAX_TAGS_PER_DAY = 3;
 
 export default function CalendarWidget({ initial }: { initial: CalendarMonthData }) {
-  const [data, setData] = useState(initial);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [monthData, setMonthData] = useState(initial);
+  const [dayData, setDayData] = useState<CalendarDayData | null>(null);
+  const [viewMode, setViewMode] = useState<"month" | "day">("month");
   const [isPending, startTransition] = useTransition();
 
-  const days = buildMonthGrid(data.year, data.month);
+  const days = buildMonthGrid(monthData.year, monthData.month);
 
   // Navigates months entirely client-side (fetch + state update) so browsing months never grows browser history.
-  function goToMonth(year: number, month: number, selectDate: string | null = null) {
+  function goToMonth(year: number, month: number) {
     startTransition(async () => {
       const res = await fetch(`/api/calendar?y=${year}&m=${month + 1}`);
       const next: CalendarMonthData = await res.json();
-      setData(next);
-      setSelectedDate(selectDate);
+      setMonthData(next);
+      setViewMode("month");
     });
   }
 
-  // Clicking a grayed-out day from an adjacent month switches to that month (if it's in range) and selects it.
+  // Fetches and switches to the day-detail view for `dateKey`. The server clamps the date to the same
+  // current-month..+12-months range enforced for the month calendar.
+  function goToDay(dateKey: string) {
+    startTransition(async () => {
+      const res = await fetch(`/api/calendar/day?date=${dateKey}`);
+      const next: CalendarDayData = await res.json();
+      setDayData(next);
+      setViewMode("day");
+    });
+  }
+
+  // Clicking a grayed-out day from an adjacent month only opens it if that month is in range.
   function handleDayClick(day: Date, key: string, inMonth: boolean) {
     if (inMonth) {
-      setSelectedDate((current) => (current === key ? null : key));
+      goToDay(key);
       return;
     }
     const targetYear = day.getUTCFullYear();
     const targetMonth = day.getUTCMonth();
     const clamped = clampToCurrentOrLater(targetYear, targetMonth, jstToday());
     if (clamped.year !== targetYear || clamped.month !== targetMonth) return;
-    goToMonth(targetYear, targetMonth, key);
+    goToDay(key);
   }
 
-  const prev = shiftMonth(data.year, data.month, -1);
-  const next = shiftMonth(data.year, data.month, 1);
-  const selectedEvents = selectedDate ? (data.eventsByDate[selectedDate] ?? []) : null;
+  function shiftDay(delta: number) {
+    if (!dayData) return;
+    goToDay(toDateKey(addDays(parseDateKey(dayData.date), delta)));
+  }
+
+  // Returns to the month grid, showing the month that contains the day currently displayed.
+  function backToCalendar() {
+    if (!dayData) {
+      setViewMode("month");
+      return;
+    }
+    const current = parseDateKey(dayData.date);
+    goToMonth(current.getUTCFullYear(), current.getUTCMonth());
+  }
+
+  if (viewMode === "day" && dayData) {
+    return (
+      <div className="min-w-0 flex-1">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex">
+            <h1 className="text-2xl font-semibold">{dayData.date.slice(0, 4)}年{parseInt(dayData.date.slice(5, 7))}月{parseInt(dayData.date.slice(8, 10))}日 の予定</h1>
+            <button type="button" onClick={backToCalendar} className="text-sm ml-4 underline disabled:opacity-50" disabled={isPending}>
+              ← カレンダーに戻る
+            </button>
+          </div>
+          <div className="flex gap-3 text-sm">
+            {dayData.isMinDate ? (
+              <div className="border-zinc-400 text-zinc-400 ronded-md px-1 items-center">
+                <LucideChevronLeft />
+              </div>
+            ) : (
+              <div className="border border-zinc-700 rounded-md px-1 bg-white/70 dark:bg-zinc-800/70">
+                <button type="button" onClick={() => shiftDay(-1)} className="disabled:opacity-50 items-center" disabled={isPending}>
+                  <LucideChevronLeft />
+                </button>
+              </div>
+            )}
+            {dayData.isMaxDate ? (
+              <div className="border-zinc-400 text-zinc-400 ronded-md px-1 items-center">
+                <LucideChevronRight />
+              </div>
+            ) : (
+              <div className="border border-zinc-700 rounded-md px-1 bg-white/70 dark:bg-zinc-800/70">
+                <button type="button" onClick={() => shiftDay(1)} className="disabled:opacity-50 items-center" disabled={isPending}>
+                  <LucideChevronRight />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <section className="rounded border p-4 bg-white dark:bg-zinc-800">
+          <div className="mb-3 flex items-center">
+            {dayData.date >= toDateKey(jstToday()) && (
+              <Link href={`/events/new?date=${dayData.date}`} className="rounded-full bg-[#5865F2] px-3 py-2 text-sm font-medium text-white">
+                新規作成
+              </Link>
+            )}
+          </div>
+
+          {dayData.events.length > 0 ? (
+            <ul className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto pr-1">
+              {dayData.events.map((e) => (
+                <li key={e.id}>
+                  <Link href={`/events/${e.id}`} className={`bg-slate-400/10 hover:bg-slate-400/30 dark:bg-white/20 dark:hover:bg-white/10 rounded-lg p-1 ${e.cancelled ? "line-through opacity-70" : ""} 
+                  ${e.room === 'Room1' ? "text-rose-700 dark:text-rose-300" :
+                      e.room === 'Room2' ? "text-lime-700 dark:text-green-300" :
+                        e.room === "Room3" ? "text-blue-700 dark:text-blue-300" :
+                          e.room === "Room4" ? "text-yellow-700 dark:text-yellow-300" :
+                            e.room === "OtherServer" ? "text-purple-700 dark:text-fuchsia-300" : ""}`}>
+                    {e.title}
+                  </Link>
+                  {e.cancelled && <span className="ml-2 text-sm text-red-600 dark:text-red-400">キャンセルされました</span>}
+                  {!e.cancelled && e.room && (
+                    <span className="ml-2 text-sm text-zinc-600 dark:text-zinc-400">
+                      {ROOM_LABELS[e.room as keyof typeof ROOM_LABELS]}
+                    </span>
+                  )}
+                  {e.description && (
+                    <span className="ml-6 whitespace-pre-wrap text-sm text-zinc-600 dark:text-zinc-400">
+                      {e.description}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">予定はありません。</p>
+          )}
+        </section>
+      </div>
+    );
+  }
+
+  const prev = shiftMonth(monthData.year, monthData.month, -1);
+  const next = shiftMonth(monthData.year, monthData.month, 1);
 
   return (
     <div className="min-w-0 flex-1">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">
-          {data.year}年{data.month + 1}月
+          {monthData.year}年{monthData.month + 1}月
         </h1>
         <div className="flex gap-3 text-sm">
-          {data.isCurrentMonth ? (
+          {monthData.isCurrentMonth ? (
             <div className="border-zinc-400 text-zinc-400 ronded-md px-1 items-center">
               <LucideChevronLeft />
             </div>
@@ -62,7 +167,7 @@ export default function CalendarWidget({ initial }: { initial: CalendarMonthData
                 </button>
               </div>
           )}
-          {data.isMaxMonth ? (
+          {monthData.isMaxMonth ? (
             <div className="border-zinc-400 text-zinc-400 ronded-md px-1 items-center">
               <LucideChevronRight />
             </div>
@@ -84,8 +189,8 @@ export default function CalendarWidget({ initial }: { initial: CalendarMonthData
         ))}
         {days.map((day) => {
           const key = toDateKey(day);
-          const inMonth = day.getUTCMonth() === data.month;
-          const dayEvents = data.eventsByDate[key] ?? [];
+          const inMonth = day.getUTCMonth() === monthData.month;
+          const dayEvents = monthData.eventsByDate[key] ?? [];
           const visible = dayEvents.slice(0, MAX_TAGS_PER_DAY);
           const overflow = dayEvents.length - visible.length;
 
@@ -96,7 +201,7 @@ export default function CalendarWidget({ initial }: { initial: CalendarMonthData
               onClick={() => handleDayClick(day, key, inMonth)}
               className={`flex min-h-24 flex-col gap-0.5 border p-1 text-left
                 ${inMonth ? "" : "text-zinc-400 dark:text-zinc-600"
-                } ${selectedDate === key ? "bg-blue-200 dark:bg-cyan-800" : inMonth ? "bg-white dark:bg-slate-600" : "bg-zinc-100 dark:bg-zinc-800"}`}
+                } ${inMonth ? "bg-white dark:bg-slate-600" : "bg-zinc-100 dark:bg-zinc-800"}`}
             >
               <span className="text-xs">{day.getUTCDate()}</span>
               {visible.map((e) => (
@@ -141,41 +246,6 @@ export default function CalendarWidget({ initial }: { initial: CalendarMonthData
           );
         })}
       </div>
-
-      {selectedDate && (
-        <section className="mt-6 rounded border p-4 bg-white dark:bg-zinc-800">
-          <h2 className="mb-2 font-medium">{selectedDate} の予定</h2>
-          {selectedEvents && selectedEvents.length > 0 ? (
-            <ul className="flex max-h-[10vh] flex-col gap-2 overflow-y-auto pr-1">
-              {selectedEvents.map((e) => (
-                <li key={e.id}>
-                  <Link href={`/events/${e.id}`} className={`bg-slate-400/10 hover:bg-slate-400/30 dark:bg-white/20 dark:hover:bg-white/10 rounded-lg p-1 ${e.cancelled ? "line-through opacity-70" : ""} 
-                  ${e.room === 'Room1' ? "text-rose-700 dark:text-rose-300" :
-                      e.room === 'Room2' ? "text-lime-700 dark:text-green-300" :
-                        e.room === "Room3" ? "text-blue-700 dark:text-blue-300" :
-                          e.room === "Room4" ? "text-yellow-700 dark:text-yellow-300" :
-                            e.room === "OtherServer" ? "text-purple-700 dark:text-fuchsia-300" : ""}`}>
-                    {e.title}
-                  </Link>
-                  {e.cancelled && <span className="ml-2 text-sm text-red-600 dark:text-red-400">キャンセルされました</span>}
-                  {!e.cancelled && e.room && (
-                    <span className="ml-2 text-sm text-zinc-600 dark:text-zinc-400">
-                      {ROOM_LABELS[e.room as keyof typeof ROOM_LABELS]}
-                    </span>
-                  )}
-                  {e.description && (
-                    <span className="ml-6 whitespace-pre-wrap text-sm text-zinc-600 dark:text-zinc-400">
-                      {e.description}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">予定はありません。</p>
-          )}
-        </section>
-      )}
     </div>
   );
 }

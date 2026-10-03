@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { cookies } from "next/headers";
+import type { NextRequest } from "next/server";
 
 const DISCORD_API = "https://discord.com/api/v10";
 
@@ -21,7 +22,13 @@ type DiscordGuildMember = {
   };
 };
 
-function requireEnv(name: string): string {
+export type GuildMemberSummary = {
+  id: string;
+  username: string;
+  displayName: string;
+};
+
+export function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
@@ -114,4 +121,70 @@ export async function fetchGuildMember(accessToken: string): Promise<DiscordGuil
   }
 
   return res.json() as Promise<DiscordGuildMember>;
+}
+
+type DiscordListedGuildMember = {
+  nick: string | null;
+  user: {
+    id: string;
+    username: string;
+    global_name: string | null;
+    bot?: boolean;
+  };
+};
+
+// Lists every (non-bot) member of the target guild using the bot token, for the event creator to pick
+// participants from. Requires the application's "Server Members Intent" to be enabled in the Discord
+// Developer Portal, since `GET /guilds/{id}/members` is a privileged-intent endpoint. A descriptive
+// User-Agent is required too: Cloudflare blocks this endpoint with a 403 for generic/default ones.
+export async function fetchGuildMembers(): Promise<GuildMemberSummary[]> {
+  const guildId = requireEnv("DISCORD_GUILD_ID");
+  const botToken = requireEnv("DISCORD_BOT_TOKEN");
+
+  const members: GuildMemberSummary[] = [];
+  let after = "0";
+  for (;;) {
+    const params = new URLSearchParams({ limit: "1000", after });
+    const res = await fetch(`${DISCORD_API}/guilds/${guildId}/members?${params.toString()}`, {
+      headers: {
+        Authorization: `Bot ${botToken}`,
+        "User-Agent": "DiscordBot (https://github.com/antem0613/bit-discord-bot, 1.0)",
+      },
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to fetch guild members: ${res.status}`);
+    }
+
+    const page = (await res.json()) as DiscordListedGuildMember[];
+    if (page.length === 0) break;
+
+    for (const m of page) {
+      if (m.user.bot) continue;
+      members.push({
+        id: m.user.id,
+        username: m.user.username,
+        displayName: m.nick ?? m.user.global_name ?? m.user.username,
+      });
+    }
+
+    if (page.length < 1000) break;
+    after = page[page.length - 1].user.id;
+  }
+
+  return members;
+}
+
+// Constant-time comparison against `BOT_EVENTS_SECRET`, shared by every bot-only API route (event
+// creation, day-before reminders, ...). The bot already has the relevant Discord profile/context from
+// the interaction itself, so unlike the website there's no session cookie here — just this shared secret.
+export function verifyBotRequestAuth(request: NextRequest): boolean {
+  const expected = process.env.BOT_EVENTS_SECRET;
+  if (!expected) return false;
+
+  const [scheme, token] = (request.headers.get("authorization") ?? "").split(" ");
+  if (scheme !== "Bearer" || !token) return false;
+
+  const expectedBuf = Buffer.from(expected);
+  const tokenBuf = Buffer.from(token);
+  return expectedBuf.length === tokenBuf.length && crypto.timingSafeEqual(expectedBuf, tokenBuf);
 }

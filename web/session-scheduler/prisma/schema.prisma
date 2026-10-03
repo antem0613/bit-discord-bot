@@ -45,8 +45,9 @@ model Member {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  createdEvents Event[]            @relation("EventCreator")
-  responses     ScheduleResponse[]
+  createdEvents  Event[]            @relation("EventCreator")
+  responses      ScheduleResponse[]
+  participations EventParticipant[]
 }
 
 model Event {
@@ -70,6 +71,7 @@ model Event {
   symbolLabels   EventSymbolLabel[]
   responses      ScheduleResponse[]
   finalDates     EventFinalDate[]
+  participants   EventParticipant[]
 }
 
 // 日程調整の候補日。連続している必要はない
@@ -107,7 +109,7 @@ model ScheduleResponse {
   memberId        String
 
   symbol    AvailabilitySymbol
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime           @updatedAt
 
   @@unique([candidateDateId, memberId])
 }
@@ -123,4 +125,19 @@ model EventFinalDate {
   @@unique([eventId, date])
   // 同日・同部屋の重複予約を防止（roomがnullの行同士はPostgres上で重複とみなされない）
   @@unique([date, room])
+}
+
+// イベント作成時にホストがあらかじめ指定した「参加者」。回答(ScheduleResponse)の有無に関わらず、
+// そのイベントに参加予定であることを示す内部的な印として使う（例: イベント一覧の「参加イベント」フィルタ）。
+// 画面上に招待一覧として表示することはせず、参加判定にのみ用いる。
+model EventParticipant {
+  id       String @id @default(uuid())
+  event    Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId  String
+  member   Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberId String
+
+  createdAt DateTime @default(now())
+
+  @@unique([eventId, memberId])
 }

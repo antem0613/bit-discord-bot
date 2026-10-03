@@ -7,10 +7,13 @@ import { LucideChevronLeft, LucideChevronRight } from "lucide-react";
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 
 // Lets the event creator pick any set of (not necessarily consecutive) candidate dates from a calendar.
-export default function CandidateDatePicker({ name = "candidateDates" }: { name?: string }) {
-  const [year, setYear] = useState(() => jstToday().getUTCFullYear());
-  const [month, setMonth] = useState(() => jstToday().getUTCMonth());
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+// `initialDates` prefills the selection (e.g. when arriving from the day-detail "新規作成" button) while
+// still letting the user freely add to or remove from it afterward.
+export default function CandidateDatePicker({ name = "candidateDates", initialDates = [] }: { name?: string; initialDates?: string[] }) {
+  const firstInitialDate = initialDates[0] ? new Date(`${initialDates[0]}T00:00:00.000Z`) : null;
+  const [year, setYear] = useState(() => firstInitialDate?.getUTCFullYear() ?? jstToday().getUTCFullYear());
+  const [month, setMonth] = useState(() => firstInitialDate?.getUTCMonth() ?? jstToday().getUTCMonth());
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(initialDates));
 
   const days = useMemo(() => buildMonthGrid(year, month), [year, month]);
   // Recomputed on every render (i.e. whenever an interaction fires a state update) so "today" never goes stale.
