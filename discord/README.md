@@ -146,15 +146,20 @@ node --test utils/terminalMessageSender.test.js
 日程調整コマンドはすべて `/schedule create` と同じ `SCHEDULER_BASE_URL` /
 `BOT_EVENTS_SECRET` / `DISCORD_GUILD_ID` を使うため、追加の環境変数は不要です。
 
-## 日程調整イベントのDM通知（毎朝8:00 JSTのリマインダー）
+## 日程調整イベントのDM通知（毎朝8:00 JSTのリマインダー / 5分ごとの締切チェック）
 
-日程調整サイト（`web/session-scheduler`）は、参加登録時・リスケジュール時にDiscordユーザーへ
-DMを送信するほか、「確定した実施日の前日」リマインダーも送信する。このBotは、前日リマインダーの
-実行タイミング（毎朝8:00 JST）だけを担当し、実際の判定・DM送信はすべてサイト側で行う。
+日程調整サイト（`web/session-scheduler`）は、参加登録時・リスケジュール時・日程確定時に
+Discordユーザーへ、また参加者募集の回答期限超過時にはホストへDMを送信する。このBotは、以下2つの
+実行タイミングだけを担当し、実際の判定・DM送信はすべてサイト側で行う。
 
 - `main.js` 起動時（`clientReady`）に `utils/dailyReminderScheduler.js` のタイマーが開始され、
-  毎朝8:00（JST）に `POST {SCHEDULER_BASE_URL}/api/bot/reminders/day-before` を
-  `Authorization: Bearer <BOT_EVENTS_SECRET>` 付きで呼び出す。
+  毎朝8:00（JST）に `POST {SCHEDULER_BASE_URL}/api/bot/reminders/day-before`
+  （確定済みイベントの前日リマインダー）を呼び出す。
+- 同じく `clientReady` で `utils/expiredRecruitmentScheduler.js` のタイマーが開始され、
+  5分ごとに `POST {SCHEDULER_BASE_URL}/api/bot/reminders/expired-recruitment`
+  （回答期限が過ぎて自動終了した募集をホストへDM通知）を呼び出す。誰かがイベントページを
+  開くのを待たず、期限超過後すぐにホストへ通知が届くようにするためのポーリング。
+- どちらも `Authorization: Bearer <BOT_EVENTS_SECRET>` 付きで呼び出す。
 - 追加の環境変数は不要（`/schedule create` で設定済みの `SCHEDULER_BASE_URL` / `BOT_EVENTS_SECRET`
   をそのまま使う）。
 

@@ -163,3 +163,41 @@ export async function runDayBeforeReminders(now = jstToday()): Promise<DayBefore
 
   return { checkedEvents: events.length, notifiedEvents };
 }
+
+export type ExpiredRecruitmentResult = {
+  checkedEvents: number;
+  closedEvents: { eventId: string; title: string }[];
+};
+
+// Proactively finds events whose response period (schedulingDeadline) has passed but are still open
+// (status SCHEDULING, closedAt null), closes them, and DMs the host — unlike the lazy `ensureEventClosed`
+// check (only triggered when someone happens to open the event page or respond to it), this runs on a
+// fixed schedule (see the bot's scheduler) so the host is notified promptly even if nobody visits the
+// page after the deadline passes.
+//
+// Each close is done via a conditional `updateMany` (matching `closedAt: null`) so that a concurrent
+// `ensureEventClosed` call for the same event (triggered by someone opening the page at the same moment)
+// can never result in the host being notified twice: whichever caller's write actually flips `closedAt`
+// from null is the only one that sends the DM.
+export async function closeExpiredRecruitmentsAndNotify(): Promise<ExpiredRecruitmentResult> {
+  const now = new Date();
+
+  const expired = await prisma.event.findMany({
+    where: { status: SchedulingStatus.SCHEDULING, closedAt: null, schedulingDeadline: { lte: now } },
+    select: { id: true, title: true, creatorId: true, schedulingDeadline: true },
+  });
+
+  const closedEvents: ExpiredRecruitmentResult["closedEvents"] = [];
+  for (const event of expired) {
+    const { count } = await prisma.event.updateMany({
+      where: { id: event.id, closedAt: null },
+      data: { closedAt: event.schedulingDeadline as Date },
+    });
+    if (count === 0) continue; // already closed by a concurrent check in the meantime
+
+    await notifyRecruitmentAutoClosed(event.id, event.title, event.creatorId);
+    closedEvents.push({ eventId: event.id, title: event.title });
+  }
+
+  return { checkedEvents: expired.length, closedEvents };
+}

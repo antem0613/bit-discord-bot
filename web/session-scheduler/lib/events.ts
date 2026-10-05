@@ -57,18 +57,26 @@ export function isResponseClosed(event: EventForStatus, now = dayjs().tz()): boo
 
 // Lazily applies the "auto-close on deadline" rule: persists closedAt the first time it's noticed the
 // deadline has passed, and DMs the host (who didn't trigger this themselves, unlike a manual close).
+// This is only a fallback for immediate UI consistency when a page happens to load right after the
+// deadline passes; the proactive, schedule-driven check is `closeExpiredRecruitmentsAndNotify` in
+// lib/notifications.ts, which doesn't depend on anyone visiting the page.
+//
+// Uses a conditional `updateMany` (matching `closedAt: null`) rather than a plain `update` so a DM is
+// never sent twice if this races with a concurrent `closeExpiredRecruitmentsAndNotify` run: whichever
+// caller's write actually flips `closedAt` from null is the only one that notifies.
 export async function ensureEventClosed(eventId: string): Promise<void> {
   const event = await prisma.event.findUnique({
     where: { id: eventId },
     select: { status: true, closedAt: true, schedulingDeadline: true, creatorId: true, title: true },
   });
   if (!event) return;
+  if (event.status !== SchedulingStatus.SCHEDULING || event.closedAt !== null || !isPastDeadline(event)) return;
 
-  if (event.status === SchedulingStatus.SCHEDULING && event.closedAt === null && isPastDeadline(event)) {
-    await prisma.event.update({
-      where: { id: eventId },
-      data: { closedAt: event.schedulingDeadline as Date },
-    });
+  const { count } = await prisma.event.updateMany({
+    where: { id: eventId, closedAt: null },
+    data: { closedAt: event.schedulingDeadline as Date },
+  });
+  if (count > 0) {
     await notifyRecruitmentAutoClosed(eventId, event.title, event.creatorId);
   }
 }

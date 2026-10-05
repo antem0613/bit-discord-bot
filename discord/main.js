@@ -1,6 +1,7 @@
 import { Client , Collection , Events , GatewayIntentBits , ActivityType , EmbedBuilder} from 'discord.js';
 import { setupTerminalMessageSender } from './utils/terminalMessageSender.js';
 import { startDailyReminderScheduler } from './utils/dailyReminderScheduler.js';
+import { startExpiredRecruitmentScheduler } from './utils/expiredRecruitmentScheduler.js';
 import { getVoiceConnection } from "@discordjs/voice";
 import express from 'express';
 import fs from 'fs';
@@ -81,6 +82,7 @@ client.on('clientReady', () => {
         client.user.setActivity(`DiceSystem：${systemName}`, { type: ActivityType.Custom });
     }
     startDailyReminderScheduler();
+    startExpiredRecruitmentScheduler();
 });
 
     // ボイスチャンネルに誰もいなくなったらBotが退出する

@@ -103,7 +103,7 @@ export default function CalendarWidget({ initial }: { initial: CalendarMonthData
           </div>
         </div>
 
-        <section className="rounded border p-4 bg-white dark:bg-zinc-800">
+        <section className="rounded border p-4 bg-white dark:bg-zinc-800 min-h-[80vh]">
           <div className="mb-3 flex items-center">
             {dayData.date >= toDateKey(jstToday()) && (
               <Link href={`/events/new?date=${dayData.date}`} className="rounded-full bg-[#5865F2] px-3 py-2 text-sm font-medium text-white">
