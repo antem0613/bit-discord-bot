@@ -1,8 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Session Scheduler
+
+Discordサーバーのメンバー向けの日程調整サイトです。Next.js、React、Prisma、PostgreSQLを使用し、
+候補日への回答、参加者設定、日程確定、カレンダー、部屋予約、リスケジュールを扱います。
+
+全体の概要は [ルート README](../../README.md)、Discordからの操作とリマインダー起動は
+[Bot README](../../discord/README.md) を参照してください。
+
+## セットアップ
+
+以下のコマンドはこのディレクトリで実行します。Docker EngineとDocker Composeが必要です。
+
+```sh
+cp .env.example .env
+```
+
+[環境変数サンプル](.env.example) を基にDB・Discord認証情報と公開URLを設定します。
+`SESSION_SECRET` と `BOT_EVENTS_SECRET` は別々のランダムな値を使用してください。
+例えば `openssl rand -hex 32` で生成できます。サンプルのDBパスワードは必ず変更してください。
+
+初回はDBを起動し、既存マイグレーションを適用してからWebを起動します。
+
+```sh
+docker compose up -d db
+docker compose run --rm --no-deps web npx prisma migrate deploy
+docker compose up -d --build web
+docker compose exec -T web npx prisma migrate status
+```
+
+DBの接続受付前にマイグレーションが失敗した場合は、DB起動後に再実行してください。
+ローカルでは [http://localhost:3002](http://localhost:3002) でアクセスできます。
+`npm run dev` の前にPrisma Clientが自動生成されます。
+
+## 環境変数とDocker
+
+`.env.example` を参考に `.env` を作成し、実際の認証情報を設定してください。
+`.env` とその派生ファイルはGitとDockerビルドから除外されます。
+
+- `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`: PostgreSQLの設定。
+- `POSTGRES_HOST` / `POSTGRES_PORT`: ホスト側の接続先（既定値: `localhost:5433`）。
+   Webコンテナでは Compose がホスト名だけを `db` に切り替えます。
+   接続URLはPrisma CLIとアプリ共通の関数で生成するため、`DATABASE_URL` と
+   `DATABASE_URL_DOCKER` の記入は不要です。パスワードはそのまま記入し、URLエンコードは不要です。
+- `SITE_BASE_URL`: DDNSなどの公開URL。イベントリンクとログイン後の転送先に使用します。
+- `ALLOWED_DEV_ORIGINS`: 開発サーバーを許可するホスト名のカンマ区切り。
+   スキーム・ポートは含めません（例: `scheduler.example.com,localhost`）。
+
+既存のDBボリュームがある場合、`.env` の `POSTGRES_PASSWORD` を変更するだけでは
+DB内のパスワードは更新されません。環境変数変更後はコンテナを再作成してください。
 
 ## Discordログイン設定
 
-1. [Discord Developer Portal](https://discord.com/developers/applications) でアプリケーションを作成し、OAuth2の Redirect URL に `http://localhost:3000/api/auth/callback` を登録する。
+1. [Discord Developer Portal](https://discord.com/developers/applications) でアプリケーションを作成し、OAuth2の Redirect URL に `http://localhost:3002/api/auth/callback` を登録する。公開時は公開URLの `/api/auth/callback` を登録する。
 2. `.env` に以下を設定する。
    - `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET`: OAuth2の認証情報
    - `DISCORD_REDIRECT_URI`: 上記で登録したコールバックURL
@@ -26,7 +74,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Discord Botコマンドからのイベント作成（`/schedule create`）
 
-Discord Bot（`discord/`リポジトリ）の `/schedule create` コマンドから、サイトにログインしていない
+同じリポジトリのDiscord Botの `/schedule create` コマンドから、サイトにログインしていない
 メンバーでもイベントを作成できるよう、Bot専用の内部API `POST /api/bot/events` を公開している。
 
 1. `.env` に `BOT_EVENTS_SECRET` を設定する（`discord/.env` の同名の値と一致させる、
@@ -60,7 +108,7 @@ Discord Bot（`discord/`リポジトリ）の `/schedule create` コマンドか
 
 ## Discord DM通知
 
-以下3つのタイミングで、Botトークンを使って対象のDiscordユーザーにDM（ダイレクトメッセージ）を
+以下のタイミングで、Botトークンを使って対象のDiscordユーザーにDM（ダイレクトメッセージ）を
 送信する（`lib/notifications.ts`）。いずれも送信失敗（DM拒否設定など）はログに記録されるのみで、
 元の処理（イベント作成・リスケジュール・リマインダー実行）自体は継続する。
 
@@ -79,40 +127,92 @@ Discord Bot（`discord/`リポジトリ）の `/schedule create` コマンドか
 `POST /api/bot/reminders/day-before` を呼び出すことで実行される
 （`Authorization: ******`ヘッダーで認証。`BOT_EVENTS_SECRET`は上記APIと共通）。
 
-追加で `.env` に `SITE_BASE_URL`（このサイトの公開URL。例: `http://antemvpn0613.tplinkdns.com:9335`。
+追加で `.env` に `SITE_BASE_URL`（このサイトの公開URL。例: `https://scheduler.example.com`。
 DM本文中のイベントリンク生成に使用）を設定する。
 
-## Getting Started
+## 開発
 
-First, run the development server:
+ホストではNode.js 22.12以上とnpmを使用します。
+DBはComposeで起動し、`.env` の `POSTGRES_HOST` を `localhost` にします。
+Compose内のWebと同じポートは使えないため、先にWebを停止します。
 
-```bash
+```sh
+npm ci
+docker compose stop web
+docker compose up -d db
+npx prisma migrate deploy
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+```sh
+npm run lint
+npm run build
+npm start -- --port 3002
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+`predev` と `prebuild` がPrisma Clientを生成します。スキーマ変更の開発時は
+`npx prisma migrate dev --name <変更名>`、既存マイグレーションの適用は `migrate deploy` を使用します。
+開発用DBと本番DBは分離し、`migrate dev` を本番DBに対して実行しないでください。
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 更新とデータ保存
 
-## Learn More
+現在のComposeは `next dev` を起動する開発構成です。ソースは `/app` にマウントされます。
+環境変数やNext.js設定の変更時はコンテナを再作成します。
 
-To learn more about Next.js, take a look at the following resources:
+```sh
+docker compose up -d --force-recreate web
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+依存やDockerfileの変更時は、匿名の依存ボリュームも更新します。
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```sh
+docker compose up -d --build --no-deps --renew-anon-volumes web
+docker compose exec -T web npx prisma migrate deploy
+docker compose exec -T web npx prisma migrate status
+```
 
-## Deploy on Vercel
+DBは `db-data` の名前付きボリュームに保存されます。更新・マイグレーション前には
+バックアップしてください。`docker compose down -v` はDBデータを削除します。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### DBパスワードの変更
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+既存DBのパスワードは環境変数だけでは変更できません。Webを停止してDBに接続します。
+
+```sh
+docker compose stop web
+docker compose exec db psql -U <POSTGRES_USERの値> -d <POSTGRES_DBの値>
+```
+
+`psql` 内で `\password`、完了後に `\q` を実行します。
+`.env` の `POSTGRES_PASSWORD` を更新してから反映・確認します。
+
+```sh
+docker compose up -d --force-recreate db web
+docker compose exec -T web npx prisma migrate status
+```
+
+パスワードはコマンド引数やGitに書かないでください。URLエンコードは共通関数が行います。
+
+## トラブルシューティング
+
+| 症状 | 確認事項 |
+| --- | --- |
+| DB認証エラー | DB内のパスワードと `.env` の一致、コンテナの再作成 |
+| Prismaの追加フィールドが認識されない | `npx prisma generate` とWeb再起動 |
+| ログイン後のURLが違う | `SITE_BASE_URL` と `DISCORD_REDIRECT_URI` |
+| ログアウト後のURLが違う | 現在は `NEXT_PUBLIC_BASE_URL` を参照するため、利用時は `SITE_BASE_URL` と同じ値を設定 |
+| OAuthのstateエラー | 同じ公開ホストでログインを開始・完了しているか、Cookieが保存されているか |
+| メンバー一覧が403になる | BotトークンとServer Members Intent |
+| Bot APIが401になる | 両サービスの `BOT_EVENTS_SECRET` |
+| リマインダーが来ない | Botの稼働、サイト到達性、対象日・回答条件、DM受信設定 |
+
+公開運用ではHTTPSを使用してください。本番モードの認証Cookieは `Secure` が付くため、
+HTTPでのログインは正常に動作しません。開発サーバーやDBポートを無制限に公開しないでください。
+
+## 主なファイル
+
+- [DBスキーマ](prisma/schema.prisma): イベント・参加者・回答・部屋予約のモデル
+- [DB接続URL生成](lib/database-url.ts): CLIとWebの接続設定共通化
+- [Discord認証](lib/discord-auth.ts): OAuth、セッション、Bot API認証
+- [通知処理](lib/notifications.ts): Discord DM送信
+- [イベントAPI](app/api/bot/events/route.ts): Botからの作成・一覧取得

@@ -3,24 +3,15 @@ services:
     build: .
     container_name: web
     ports:
-      - "3000:3000"
+      - "3002:3002"
     volumes:
       - .:/app
       - /app/node_modules
       - /app/.next
+    env_file:
+      - .env
     environment:
-      # Overrides the host-facing DATABASE_URL from .env (which points at "localhost", correct for
-      # host-side `npx prisma` commands): inside this container "localhost" means the container
-      # itself, not the "db" service, so we address the database by its compose service name instead.
-      - DATABASE_URL=postgresql://user:xR7%255QMxyS6$@db:5433/schedulerdb?schema=public
-      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
-      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
-      - DISCORD_REDIRECT_URI=${DISCORD_REDIRECT_URI}
-      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
-      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
-      - BOT_EVENTS_SECRET=${BOT_EVENTS_SECRET}
-      - SITE_BASE_URL=${SITE_BASE_URL}
-      - SESSION_SECRET=${SESSION_SECRET}
+      POSTGRES_HOST: db
     depends_on:
       - db
   
@@ -28,12 +19,12 @@ services:
     image: postgres:15-alpine
     container_name: db
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: xR7%5QMxyS6$
-      POSTGRES_DB: schedulerdb
-      PGPORT: 5433
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      PGPORT: ${POSTGRES_PORT:-5433}
     ports:
-      - "5433:5433"
+      - "${POSTGRES_PORT:-5433}:${POSTGRES_PORT:-5433}"
     volumes:
       - db-data:/var/lib/postgresql/data
   

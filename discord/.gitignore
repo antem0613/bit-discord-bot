@@ -9,9 +9,13 @@
 *.user
 *.userosscache
 *.sln.docstates
+.env*
 *.env
+!.env.example
 /guild_configs/
 /guild_dictionaries/
+/data/guild_configs/
+/data/guild_dictionaries/
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
