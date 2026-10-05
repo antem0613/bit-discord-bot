@@ -12,22 +12,21 @@ import { prisma } from "@/lib/prisma";
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");
-
-  console.log(request.url);
+  const baseUrl = process.env.SITE_BASE_URL || request.nextUrl.origin;
 
   const cookieStore = await cookies();
   const savedState = cookieStore.get(STATE_COOKIE)?.value;
   cookieStore.delete(STATE_COOKIE);
 
   if (!code || !state || !savedState || state !== savedState) {
-    return NextResponse.redirect(new URL("/?error=invalid_state", request.nextUrl.origin));
+    return NextResponse.redirect(new URL("/?error=invalid_state", baseUrl));
   }
 
   try {
     const accessToken = await exchangeCodeForToken(code);
     const member = await fetchGuildMember(accessToken);
     if (!member) {
-      return NextResponse.redirect(new URL("/?error=not_member", request.nextUrl.origin));
+      return NextResponse.redirect(new URL("/?error=not_member", baseUrl));
     }
 
     const displayName = member.nick ?? member.user.global_name ?? member.user.username;
@@ -56,8 +55,8 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("Discord login failed:", error);
-    return NextResponse.redirect(new URL("/?error=login_failed", request.nextUrl.origin));
+    return NextResponse.redirect(new URL("/?error=login_failed", baseUrl));
   }
 
-  return NextResponse.redirect(new URL("/", request.nextUrl.origin));
+  return NextResponse.redirect(new URL("/", baseUrl));
 }

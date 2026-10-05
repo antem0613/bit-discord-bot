@@ -88,7 +88,8 @@ export async function POST(request: NextRequest) {
       schedulingDeadlineRaw: String(body.schedulingDeadline ?? ""),
     });
 
-    return NextResponse.json({ id: event.id, url: `${request.nextUrl.origin}/events/${event.id}` });
+    const baseUrl = (process.env.SITE_BASE_URL || request.nextUrl.origin).replace(/\/+$/, "");
+    return NextResponse.json({ id: event.id, url: `${baseUrl}/events/${event.id}` });
   } catch (error) {
     if (error instanceof EventValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

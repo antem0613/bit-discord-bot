@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
   }
 
   const events = await getMyUpcomingEvents(userId);
-  const withUrls = events.map((e) => ({ ...e, url: `${request.nextUrl.origin}/events/${e.id}` }));
+  const baseUrl = (process.env.SITE_BASE_URL || request.nextUrl.origin).replace(/\/+$/, "");
+  const withUrls = events.map((e) => ({ ...e, url: `${baseUrl}/events/${e.id}` }));
 
   return NextResponse.json({ events: withUrls });
 }

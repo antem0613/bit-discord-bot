@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from "@discordjs/builders";
 import { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
 
-const SCHEDULER_BASE_URL = process.env.SCHEDULER_BASE_URL || "http://antemvpn0613.tplinkdns.com:9335";
+const SCHEDULER_BASE_URL = process.env.SCHEDULER_BASE_URL || "http://localhost:3002";
 const CREATE_MODAL_CUSTOM_ID = "schedule:create";
 
 export const data = new SlashCommandBuilder()
