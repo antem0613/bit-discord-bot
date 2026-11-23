@@ -1,7 +1,7 @@
-import { AvailabilitySymbol, SchedulingStatus, SessionRoom } from "@/app/generated/prisma/client";
+import { AvailabilitySymbol, Prisma, SchedulingStatus, SessionRoom } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import dayjs from "@/lib/dayjs";
-import { DEFAULT_SYMBOL_LABELS, SYMBOL_ORDER } from "@/lib/event-constants";
+import { DEFAULT_SYMBOL_LABELS, SYMBOL_ORDER, isExclusiveRoom } from "@/lib/event-constants";
 import { notifyParticipantsAdded, notifyRecruitmentAutoClosed } from "@/lib/notifications";
 
 export { toDateKey } from "@/lib/calendar-grid";
@@ -83,20 +83,36 @@ export async function ensureEventClosed(eventId: string): Promise<void> {
 
 export type FinalDateInput = { date: Date; room: SessionRoom | null };
 
-// Returns the subset of `dates` whose room is already booked by another finalized event on that day.
-export async function findRoomConflicts(dates: FinalDateInput[]): Promise<FinalDateInput[]> {
-  const roomedDates = dates.filter((d): d is FinalDateInput & { room: SessionRoom } => d.room !== null);
+// Returns the subset of `dates` whose room is already booked on that day by another event's final
+// date. Cancelled events don't occupy rooms, and "他サーバー" (OtherServer) is never exclusive.
+// Pass a transaction client to check-and-insert atomically (see `lockRoomBookings`).
+export async function findRoomConflicts(
+  dates: FinalDateInput[],
+  db: Prisma.TransactionClient | typeof prisma = prisma
+): Promise<FinalDateInput[]> {
+  const roomedDates = dates.filter(
+    (d): d is FinalDateInput & { room: SessionRoom } => d.room !== null && isExclusiveRoom(d.room)
+  );
   if (roomedDates.length === 0) return [];
 
-  const existing = await prisma.eventFinalDate.findMany({
+  const existing = await db.eventFinalDate.findMany({
     where: {
       OR: roomedDates.map((d) => ({ date: d.date, room: d.room })),
+      event: { status: { not: SchedulingStatus.CANCELLED } },
     },
     select: { date: true, room: true },
   });
 
   const existingKeys = new Set(existing.map((e) => `${e.date.toISOString()}_${e.room}`));
   return roomedDates.filter((d) => existingKeys.has(`${d.date.toISOString()}_${d.room}`));
+}
+
+// Serializes room bookings for the rest of the given transaction. There is no DB unique constraint on
+// (date, room) any more (cancelled / OtherServer rows may repeat), so concurrent finalizations take
+// this lock before `findRoomConflicts` + insert to avoid double-booking the same room.
+const ROOM_BOOKING_LOCK_KEY = 72_001; // arbitrary app-wide constant for pg_advisory_xact_lock
+export async function lockRoomBookings(tx: Prisma.TransactionClient): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROOM_BOOKING_LOCK_KEY})`;
 }
 
 export type CreateEventParticipantInput = { id: string; username: string; displayName: string };

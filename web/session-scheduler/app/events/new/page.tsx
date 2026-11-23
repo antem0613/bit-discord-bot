@@ -1,6 +1,9 @@
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { fetchGuildMembers, getSession, type GuildMemberSummary } from "@/lib/discord-auth";
 import { toDateTimeLocalMin } from "@/lib/events";
 import CreateEventForm from "@/app/components/CreateEventForm";
+import Notice from "@/app/components/Notice";
 
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -14,12 +17,14 @@ export default async function NewEventPage({
 
   if (!user) {
     return (
-      <div className="mx-auto w-full max-w-xl p-8">
-        <p>イベントを作成するにはログインが必要です。</p>
-        <a href="/api/auth/login" className="text-blue-600 underline">
-          Discordでログイン
-        </a>
-      </div>
+      <Notice
+        message="イベントを作成するにはログインが必要です。"
+        action={
+          <a href="/api/auth/login" className="btn-primary">
+            Discordでログイン
+          </a>
+        }
+      />
     );
   }
 
@@ -33,8 +38,12 @@ export default async function NewEventPage({
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl p-8">
-      <h1 className="mb-6 text-2xl font-semibold">イベントを作成</h1>
+    <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
+      <Link href="/" className="btn-ghost -ml-3 mb-2">
+        <ArrowLeft className="size-4" />
+        カレンダー
+      </Link>
+      <h1 className="mb-5 text-2xl font-bold sm:text-3xl">イベントを作成</h1>
       <CreateEventForm deadlineMin={toDateTimeLocalMin()} initialDates={initialDates} guildMembers={guildMembers} />
     </div>
   );

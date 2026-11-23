@@ -1,19 +1,23 @@
 import crypto from "node:crypto";
 import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
-import { STATE_COOKIE, buildAuthorizeUrl } from "@/lib/discord-auth";
+import { NextRequest, NextResponse } from "next/server";
+import { LOGIN_NEXT_COOKIE, STATE_COOKIE, buildAuthorizeUrl } from "@/lib/discord-auth";
+import { safeNextPath } from "@/lib/session-token";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const state = crypto.randomBytes(16).toString("hex");
+  const next = safeNextPath(request.nextUrl.searchParams.get("next"));
 
   const cookieStore = await cookies();
-  cookieStore.set(STATE_COOKIE, state, {
+  const shortLived = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "lax" as const,
     maxAge: 300,
     path: "/",
-  });
+  };
+  cookieStore.set(STATE_COOKIE, state, shortLived);
+  cookieStore.set(LOGIN_NEXT_COOKIE, next, shortLived);
 
   return NextResponse.redirect(buildAuthorizeUrl(state));
 }

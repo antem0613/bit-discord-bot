@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ArrowLeft, CalendarCheck, CalendarClock, Clock, Lock, LockOpen, MapPin, Settings2, TriangleAlert, User, XCircle } from "lucide-react";
 import { getSession } from "@/lib/discord-auth";
 import { prisma } from "@/lib/prisma";
 import { cancelEvent, closeEvent, finalizeEvent, reopenEvent, selectResponse } from "@/app/actions/events";
@@ -15,14 +16,8 @@ import {
 } from "@/lib/events";
 import { AvailabilitySymbol, SessionRoom } from "@/app/generated/prisma/client";
 import ResponseTable, { type Responder } from "@/app/components/ResponseTable";
-import { CornerDownLeft } from "lucide-react";
-
-const STATUS_LABELS: Record<string, string> = {
-  SCHEDULING: "調整中",
-  FINALIZED: "確定済み",
-  CANCELLED: "キャンセル",
-  COMPLETED: "終了",
-};
+import { STATUS_BADGES, formatLongDate, formatShortDate, roomStyle, statusKey, weekdayOf, weekdayTextClass, WEEKDAY_LABELS } from "@/lib/ui-styles";
+import dayjs from "@/lib/dayjs";
 
 export default async function EventDetailPage({
   params,
@@ -95,39 +90,120 @@ export default async function EventDetailPage({
     }
   }
 
+  const badge = STATUS_BADGES[statusKey(event.status, closed)];
+  const topDateIds = new Set(responseRows.filter((r) => r.isTop).map((r) => r.id));
+  const showCreatorPanel = isCreator && (event.status === "SCHEDULING" || event.status === "FINALIZED");
+
   return (
-    <div className="mx-auto w-full max-w-4xl p-8">
-      <Link href="/" className="flex bg-zinc-200 hover:bg-zinc-300 dark:text-zinc-400 dark:bg-zinc-900 dark:hover:bg-zinc-800 rounded-full w-fit p-2">
-        <CornerDownLeft /> 戻る
+    <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6">
+      <Link href="/" className="btn-ghost -ml-3 mb-2">
+        <ArrowLeft className="size-4" />
+        カレンダー
       </Link>
 
-      <h1 className="mt-2 text-4xl font-bold">{event.title}</h1>
-      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-zinc-600 dark:text-zinc-400">
-        <span>作成者: {event.creator.displayName ?? event.creator.username}</span>
-        <span>状態: {STATUS_LABELS[event.status] ?? event.status}</span>
-        {event.schedulingDeadline && (
-          <span>回答期限: {event.schedulingDeadline.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}</span>
+      {/* ---------- Overview ---------- */}
+      <section className="card p-5 sm:p-7">
+        <span className={`badge ${badge.className}`}>{badge.label}</span>
+        <h1 className="mt-2 text-2xl leading-tight font-bold break-words sm:text-4xl">{event.title}</h1>
+        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-muted">
+          <span className="flex items-center gap-1.5">
+            <User className="size-4" />
+            {event.creator.displayName ?? event.creator.username}
+          </span>
+          {event.schedulingDeadline && (
+            <span className="flex items-center gap-1.5">
+              <Clock className="size-4" />
+              回答期限 {dayjs(event.schedulingDeadline).tz().format("YYYY/M/D HH:mm")}
+            </span>
+          )}
+          {event.status === "SCHEDULING" && (
+            <span className="flex items-center gap-1.5">
+              <CalendarClock className="size-4" />
+              候補日 {event.candidateDates.length}日
+            </span>
+          )}
+        </div>
+        {event.description && (
+          <p className="mt-5 border-t border-line pt-5 leading-relaxed whitespace-pre-wrap">{event.description}</p>
         )}
-      </div>
+      </section>
 
-      {event.description && <p className="mt-4 whitespace-pre-wrap">{event.description}</p>}
+      {error && (
+        <p className="mt-4 flex items-center gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+          <TriangleAlert className="size-4 shrink-0" />
+          {error}
+        </p>
+      )}
 
-      {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {event.status === "CANCELLED" && (
+        <p className="mt-4 flex items-center gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm font-medium text-danger">
+          <XCircle className="size-4 shrink-0" />
+          このイベントはキャンセルされました。
+        </p>
+      )}
 
-      <section className="mt-6 rounded border p-4 dark:bg-zinc-800">
-        <h2 className="mb-2 font-medium">回答記号</h2>
-        <ul className="flex flex-wrap gap-4 text-sm mx-auto">
+      {/* ---------- Final dates ---------- */}
+      {event.status === "FINALIZED" && (
+        <section className="card mt-4 border-emerald-500/40 p-5 sm:p-6">
+          <h2 className="mb-3 flex items-center gap-2 font-bold text-emerald-700 dark:text-emerald-300">
+            <CalendarCheck className="size-5" />
+            実施日
+          </h2>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {event.finalDates.map((f) => {
+              const key = toDateKey(f.date);
+              const wd = weekdayOf(key);
+              return (
+                <li key={f.id} className="flex items-center justify-between gap-3 rounded-xl bg-surface-2 px-4 py-3">
+                  <span className="font-bold tabular-nums">
+                    {formatLongDate(key)}
+                    <span className={`ml-1 font-semibold ${weekdayTextClass(wd) || "text-muted"}`}>({WEEKDAY_LABELS[wd]})</span>
+                  </span>
+                  {f.room && (
+                    <span className={`badge ${roomStyle(f.room).chip}`}>
+                      <MapPin className="size-3" />
+                      {ROOM_LABELS[f.room]}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
+      {/* ---------- Responses ---------- */}
+      <section className="card mt-4 p-5 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="font-bold">みんなの回答</h2>
+            <p className="field-hint mt-0.5">
+              {canAnswer
+                ? "各日付で当てはまる記号を選んでください。押すとすぐ保存されます。"
+                : !user
+                  ? "回答するにはログインしてください。"
+                  : event.status === "SCHEDULING" && closed
+                    ? "回答の受付は終了しています。"
+                    : "回答の集計結果です。"}
+              {isCreator && " 日付を押すと回答者が表示されます。"}
+            </p>
+          </div>
+          {!user && event.status === "SCHEDULING" && !closed && (
+            <a href="/api/auth/login" className="btn-primary px-3 py-1.5">
+              Discordでログイン
+            </a>
+          )}
+        </div>
+
+        <ul className="mb-4 flex flex-wrap gap-1.5 text-sm">
           {SYMBOL_ORDER.map((symbol) => (
-            <li key={symbol}>
-              <span className="mr-1 text-lg">{SYMBOL_MARKS[symbol]}</span>
-              {labelBySymbol[symbol]}
+            <li key={symbol} className="flex items-center gap-1.5 rounded-full bg-surface-3 py-1 pr-3 pl-2">
+              <span className="font-bold">{SYMBOL_MARKS[symbol]}</span>
+              <span className="text-muted">{labelBySymbol[symbol]}</span>
             </li>
           ))}
         </ul>
-      </section>
 
-      <section className="mt-6">
-        <h2 className="mb-2 font-medium">みんなの回答</h2>
         <ResponseTable
           symbolOrder={SYMBOL_ORDER}
           rows={responseRows}
@@ -138,92 +214,99 @@ export default async function EventDetailPage({
         />
       </section>
 
-      {user && event.status === "SCHEDULING" && closed && (
-        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">回答の受付は終了しています。</p>
-      )}
+      {/* ---------- Creator panel ---------- */}
+      {showCreatorPanel && (
+        <section className="card mt-4 border-dashed p-5 sm:p-6">
+          <h2 className="mb-1 flex items-center gap-2 font-bold">
+            <Settings2 className="size-5 text-brand" />
+            主催者メニュー
+          </h2>
+          <p className="field-hint mb-4">この操作はイベント作成者にのみ表示されています。</p>
 
-      {isCreator && event.status === "SCHEDULING" && !closed && (
-        <section className="mt-6">
-          <form action={closeEvent.bind(null, event.id)}>
-            <button type="submit" className="rounded-full border px-5 py-2 text-sm bg-red-300 hover:bg-red-400 dark:hover:bg-red-500">
-              参加受付を締め切る
-            </button>
-          </form>
-        </section>
-      )}
+          {event.status === "SCHEDULING" && !closed && (
+            <div className="flex flex-col gap-3 rounded-xl bg-surface-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted">回答が集まったら受付を締め切り、実施日を決定します。</p>
+              <form action={closeEvent.bind(null, event.id)}>
+                <button type="submit" className="btn-danger">
+                  <Lock className="size-4" />
+                  参加受付を締め切る
+                </button>
+              </form>
+            </div>
+          )}
 
-      {isCreator && event.status === "SCHEDULING" && closed && canReopen && (
-        <section className="mt-6">
-          <form action={reopenEvent.bind(null, event.id)}>
-            <button type="submit" className="rounded-full border px-5 py-2 text-sm hover:bg-green-300 dark:hover:bg-emerald-600">
-              参加受付を再開する
-            </button>
-          </form>
-        </section>
-      )}
-
-      {isCreator && event.status === "SCHEDULING" && closed && (
-        <section className="mt-6 rounded border p-4">
-          <h2 className="mb-3 font-medium">実施日と場所を決定</h2>
-          <form action={finalizeEvent.bind(null, event.id)} className="flex flex-col gap-3 items-center">
-            {event.candidateDates.map((candidate) => {
-              const key = toDateKey(candidate.date);
-              return (
-                <div key={candidate.id} className="flex items-center gap-4">
-                  <label className="flex w-40 shrink-0 items-center gap-2 text-xl font-semibold">
-                    <input type="checkbox" name="finalDate" value={key} />
-                    {key}
-                  </label>
-                  <label className="ml-16">場所</label>
-                  <select name={`room_${key}`} defaultValue="" className="rounded border px-2 py-1 dark:bg-zinc-900">
-                    <option value="">なし</option>
-                    {Object.values(SessionRoom).map((room) => (
-                      <option key={room} value={room}>
-                        {ROOM_LABELS[room]}
-                      </option>
-                    ))}
-                  </select>
+          {event.status === "SCHEDULING" && closed && (
+            <div className="flex flex-col gap-4">
+              {canReopen && (
+                <div className="flex flex-col gap-3 rounded-xl bg-surface-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted">受付を締め切っています。再開すると再び回答できるようになります。</p>
+                  <form action={reopenEvent.bind(null, event.id)}>
+                    <button type="submit" className="btn-secondary">
+                      <LockOpen className="size-4" />
+                      参加受付を再開する
+                    </button>
+                  </form>
                 </div>
-              );
-            })}
-            <button type="submit" className="mt-2 w-fit rounded-full bg-[#5865F2] hover:bg-[#8992f8] px-5 py-2 font-medium text-white">
-              この内容で確定する
-            </button>
-          </form>
-        </section>
-      )}
+              )}
 
-      {event.status === "FINALIZED" && (
-        <section className="mt-6 rounded border p-4">
-          <h2 className="mb-2 font-medium">実施日</h2>
-          <ul className="flex flex-col gap-1 text-sm">
-            {event.finalDates.map((f) => (
-              <li key={f.id}>
-                {toDateKey(f.date)} {f.room && `- ${ROOM_LABELS[f.room]}`}
-              </li>
-            ))}
-          </ul>
-          <Link href="/" className="mt-3 inline-block text-sm underline">
-            カレンダーで見る
-          </Link>
-        </section>
-      )}
+              <form action={finalizeEvent.bind(null, event.id)} className="flex flex-col gap-3">
+                <h3 className="text-sm font-bold">実施日と場所を決定</h3>
+                <ul className="flex flex-col gap-2">
+                  {event.candidateDates.map((candidate) => {
+                    const key = toDateKey(candidate.date);
+                    return (
+                      <li
+                        key={candidate.id}
+                        className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-3 has-[input:checked]:border-brand has-[input:checked]:bg-brand-soft sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <label className="flex cursor-pointer items-center gap-3">
+                          <input type="checkbox" name="finalDate" value={key} className="size-5 accent-brand" />
+                          <span className={`text-lg font-bold tabular-nums ${weekdayTextClass(weekdayOf(key))}`}>
+                            {formatShortDate(key)}
+                          </span>
+                          {topDateIds.has(candidate.id) && (
+                            <span className="badge bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">最有力</span>
+                          )}
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                          <MapPin className="size-4 text-muted" />
+                          <span className="sr-only">場所</span>
+                          <select name={`room_${key}`} defaultValue="" className="input py-2 sm:w-52">
+                            <option value="">場所なし</option>
+                            {Object.values(SessionRoom).map((room) => (
+                              <option key={room} value={room}>
+                                {ROOM_LABELS[room]}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <button type="submit" className="btn-primary self-end px-6">
+                  <CalendarCheck className="size-4" />
+                  この内容で確定する
+                </button>
+              </form>
+            </div>
+          )}
 
-      {isCreator && event.status === "FINALIZED" && (
-        <section className="mt-6 flex items-center gap-3">
-          <Link href={`/events/${event.id}/reschedule`} className="rounded-full border px-5 py-2 text-sm hover:bg-zinc-400/50 dark:hover:bg-white/30">
-            日程を再調整する
-          </Link>
-          <form action={cancelEvent.bind(null, event.id)}>
-            <button type="submit" className="rounded-full border border-red-400 px-5 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white">
-              イベントをキャンセルする
-            </button>
-          </form>
+          {event.status === "FINALIZED" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Link href={`/events/${event.id}/reschedule`} className="btn-secondary">
+                <CalendarClock className="size-4" />
+                日程を再調整する
+              </Link>
+              <form action={cancelEvent.bind(null, event.id)}>
+                <button type="submit" className="btn-danger">
+                  <XCircle className="size-4" />
+                  イベントをキャンセルする
+                </button>
+              </form>
+            </div>
+          )}
         </section>
-      )}
-
-      {event.status === "CANCELLED" && (
-        <p className="mt-6 text-sm text-red-600 dark:text-red-400">このイベントはキャンセルされました。</p>
       )}
     </div>
   );

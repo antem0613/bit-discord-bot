@@ -6,6 +6,7 @@ import { AvailabilitySymbol, SchedulingStatus } from "@/app/generated/prisma/cli
 import { prisma } from "@/lib/prisma";
 import { addDays, jstToday } from "@/lib/calendar-grid";
 import { ROOM_LABELS } from "@/lib/event-constants";
+import { MOCK_ID_PREFIX } from "@/lib/mock-auth";
 
 const DISCORD_API = "https://discord.com/api/v10";
 const USER_AGENT = "DiscordBot (https://github.com/antem0613/bit-discord-bot, 1.0)";
@@ -41,6 +42,11 @@ async function openDmChannel(userId: string, botToken: string): Promise<string |
 // Sends a single DM. Never throws: logs and returns on any failure (missing token, DMs disabled,
 // user has no mutual server with the bot, rate limiting, ...).
 async function sendDirectMessage(userId: string, content: string): Promise<void> {
+  // Mock-login test users (lib/mock-auth.ts) aren't real Discord accounts.
+  if (userId.startsWith(MOCK_ID_PREFIX)) {
+    console.log(`[notifications] Skipping DM to mock user ${userId}: ${content.split("\n")[0]}`);
+    return;
+  }
   try {
     const botToken = process.env.DISCORD_BOT_TOKEN;
     if (!botToken) {

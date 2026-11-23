@@ -30,6 +30,12 @@ export const SYMBOL_SCORES: Record<AvailabilitySymbol, number> = {
   UNKNOWN: 0,
 };
 
+// Rooms that can host only one finalized (non-cancelled) event per day. "他サーバー" is not a
+// physical room, so any number of events may use it on the same day.
+export function isExclusiveRoom(room: SessionRoom | string | null | undefined): boolean {
+  return Boolean(room) && room !== SessionRoom.OtherServer;
+}
+
 export const ROOM_LABELS: Record<SessionRoom, string> = {
   Room1: "セッション部屋１",
   Room2: "セッション部屋２",

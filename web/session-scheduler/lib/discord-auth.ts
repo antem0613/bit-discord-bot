@@ -1,32 +1,25 @@
 import crypto from "node:crypto";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
+import { SESSION_COOKIE, decodeSession, type SessionUser } from "@/lib/session-token";
+import { DISCORD_API, DISCORD_BOT_USER_AGENT, defaultAvatarUrl, discordAvatarUrl, memberDisplayName, type DiscordGuildMember } from "@/lib/discord-member";
 
-const DISCORD_API = "https://discord.com/api/v10";
+export { SESSION_COOKIE, encodeSession, sessionCookieOptions, type SessionUser } from "@/lib/session-token";
+export { defaultAvatarUrl, discordAvatarUrl, memberDisplayName } from "@/lib/discord-member";
 
-export const SESSION_COOKIE = "session";
 export const STATE_COOKIE = "oauth_state";
-
-export type SessionUser = {
-  id: string;
-  username: string;
-  displayName: string;
-};
-
-type DiscordGuildMember = {
-  nick: string | null;
-  user: {
-    id: string;
-    username: string;
-    global_name: string | null;
-  };
-};
+export const LOGIN_NEXT_COOKIE = "login_next";
 
 export type GuildMemberSummary = {
   id: string;
   username: string;
   displayName: string;
+  avatarUrl: string;
 };
+
+export function avatarUrlFor(user: SessionUser): string {
+  return user.avatarUrl ?? defaultAvatarUrl(user.id);
+}
 
 export function requireEnv(name: string): string {
   const value = process.env[name];
@@ -34,37 +27,6 @@ export function requireEnv(name: string): string {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
-}
-
-function getSessionSecret(): string {
-  return requireEnv("SESSION_SECRET");
-}
-
-function sign(payload: string): string {
-  return crypto.createHmac("sha256", getSessionSecret()).update(payload).digest("base64url");
-}
-
-// Signs the session so the cookie value cannot be forged by the client.
-export function encodeSession(user: SessionUser): string {
-  const payload = Buffer.from(JSON.stringify(user)).toString("base64url");
-  return `${payload}.${sign(payload)}`;
-}
-
-function decodeSession(token: string): SessionUser | null {
-  const [payload, signature] = token.split(".");
-  if (!payload || !signature) return null;
-
-  const expected = Buffer.from(sign(payload));
-  const actual = Buffer.from(signature);
-  if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as SessionUser;
-  } catch {
-    return null;
-  }
 }
 
 export async function getSession(): Promise<SessionUser | null> {
@@ -101,7 +63,9 @@ export async function exchangeCodeForToken(code: string): Promise<string> {
     body,
   });
   if (!res.ok) {
-    throw new Error(`Failed to exchange authorization code: ${res.status}`);
+    // Discord's body is e.g. {"error":"invalid_grant"} / {"error":"invalid_client"}; it contains no secrets.
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Failed to exchange authorization code: ${res.status} ${detail}`);
   }
 
   const data = (await res.json()) as { access_token: string };
@@ -123,16 +87,6 @@ export async function fetchGuildMember(accessToken: string): Promise<DiscordGuil
   return res.json() as Promise<DiscordGuildMember>;
 }
 
-type DiscordListedGuildMember = {
-  nick: string | null;
-  user: {
-    id: string;
-    username: string;
-    global_name: string | null;
-    bot?: boolean;
-  };
-};
-
 // Lists every (non-bot) member of the target guild using the bot token, for the event creator to pick
 // participants from. Requires the application's "Server Members Intent" to be enabled in the Discord
 // Developer Portal, since `GET /guilds/{id}/members` is a privileged-intent endpoint. A descriptive
@@ -148,14 +102,14 @@ export async function fetchGuildMembers(): Promise<GuildMemberSummary[]> {
     const res = await fetch(`${DISCORD_API}/guilds/${guildId}/members?${params.toString()}`, {
       headers: {
         Authorization: `Bot ${botToken}`,
-        "User-Agent": "DiscordBot (https://github.com/antem0613/bit-discord-bot, 1.0)",
+        "User-Agent": DISCORD_BOT_USER_AGENT,
       },
     });
     if (!res.ok) {
       throw new Error(`Failed to fetch guild members: ${res.status}`);
     }
 
-    const page = (await res.json()) as DiscordListedGuildMember[];
+    const page = (await res.json()) as DiscordGuildMember[];
     if (page.length === 0) break;
 
     for (const m of page) {
@@ -163,7 +117,8 @@ export async function fetchGuildMembers(): Promise<GuildMemberSummary[]> {
       members.push({
         id: m.user.id,
         username: m.user.username,
-        displayName: m.nick ?? m.user.global_name ?? m.user.username,
+        displayName: memberDisplayName(m),
+        avatarUrl: discordAvatarUrl(m, 64),
       });
     }
 
