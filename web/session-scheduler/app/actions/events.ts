@@ -8,10 +8,12 @@ import { AvailabilitySymbol, SchedulingStatus, SessionRoom } from "@/app/generat
 import {
   DEFAULT_SYMBOL_LABELS,
   EventValidationError,
+  ROOM_LABELS,
   SYMBOL_ORDER,
   createEventRecord,
   ensureEventClosed,
   findRoomConflicts,
+  lockRoomBookings,
   isPastDeadline,
   isResponseClosed,
   parseDateOnly,
@@ -25,7 +27,7 @@ export type CreateEventState = { error: string } | undefined;
 // with everything the user already typed/selected intact.
 export async function createEvent(_prevState: CreateEventState, formData: FormData): Promise<CreateEventState> {
   const session = await getSession();
-  if (!session) redirect("/?error=login_failed");
+  if (!session) redirect("/login");
 
   try {
     const title = String(formData.get("title") ?? "").trim();
@@ -70,7 +72,7 @@ export async function createEvent(_prevState: CreateEventState, formData: FormDa
 // Selects (or switches) the current member's answer for a single candidate date; upsert enforces one symbol per member/date.
 export async function selectResponse(eventId: string, candidateDateId: string, symbol: AvailabilitySymbol) {
   const session = await getSession();
-  if (!session) redirect("/?error=login_failed");
+  if (!session) redirect("/login");
 
   try {
     await ensureEventClosed(eventId);
@@ -107,7 +109,7 @@ export async function selectResponse(eventId: string, candidateDateId: string, s
 
 export async function closeEvent(eventId: string) {
   const session = await getSession();
-  if (!session) redirect("/?error=login_failed");
+  if (!session) redirect("/login");
 
   try {
     const event = await prisma.event.findUnique({
@@ -131,7 +133,7 @@ export async function closeEvent(eventId: string) {
 
 export async function reopenEvent(eventId: string) {
   const session = await getSession();
-  if (!session) redirect("/?error=login_failed");
+  if (!session) redirect("/login");
 
   try {
     const event = await prisma.event.findUnique({
@@ -160,7 +162,7 @@ export async function reopenEvent(eventId: string) {
 
 export async function finalizeEvent(eventId: string, formData: FormData) {
   const session = await getSession();
-  if (!session) redirect("/?error=login_failed");
+  if (!session) redirect("/login");
 
   try {
     const event = await prisma.event.findUnique({
@@ -192,18 +194,22 @@ export async function finalizeEvent(eventId: string, formData: FormData) {
       return { date: parseDateOnly(dateStr), room };
     });
 
-    const conflicts = await findRoomConflicts(finalDates);
-    if (conflicts.length > 0) {
-      const detail = conflicts.map((c) => `${c.date.toISOString().slice(0, 10)}(${c.room})`).join(", ");
-      throw new EventValidationError(`セッション部屋が他のイベントと重複しています: ${detail}`);
-    }
+    await prisma.$transaction(async (tx) => {
+      // Check-then-insert under a lock so two hosts can't book the same room on the same day at once.
+      await lockRoomBookings(tx);
+      const conflicts = await findRoomConflicts(finalDates, tx);
+      if (conflicts.length > 0) {
+        const detail = conflicts
+          .map((c) => `${c.date.toISOString().slice(0, 10)}(${c.room ? ROOM_LABELS[c.room] : ""})`)
+          .join(", ");
+        throw new EventValidationError(`セッション部屋が他のイベントと重複しています: ${detail}`);
+      }
 
-    await prisma.$transaction([
-      prisma.eventFinalDate.createMany({
+      await tx.eventFinalDate.createMany({
         data: finalDates.map((f) => ({ eventId, date: f.date, room: f.room })),
-      }),
-      prisma.event.update({ where: { id: eventId }, data: { status: SchedulingStatus.FINALIZED } }),
-    ]);
+      });
+      await tx.event.update({ where: { id: eventId }, data: { status: SchedulingStatus.FINALIZED } });
+    });
 
     // Notify everyone who engaged with this event (answered any candidate date, or was pre-set as a
     // participant), excluding the creator who just finalized it themselves.
@@ -236,7 +242,7 @@ export async function finalizeEvent(eventId: string, formData: FormData) {
 
 export async function cancelEvent(eventId: string) {
   const session = await getSession();
-  if (!session) redirect("/?error=login_failed");
+  if (!session) redirect("/login");
 
   try {
     const event = await prisma.event.findUnique({
@@ -264,7 +270,7 @@ export async function cancelEvent(eventId: string) {
 // Restarts scheduling from a finalized event: clears final dates/candidate dates/labels/responses and takes fresh input for everything except title and description.
 export async function rescheduleEvent(eventId: string, formData: FormData) {
   const session = await getSession();
-  if (!session) redirect("/?error=login_failed");
+  if (!session) redirect("/login");
 
   try {
     const event = await prisma.event.findUnique({

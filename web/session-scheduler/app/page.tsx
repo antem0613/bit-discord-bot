@@ -1,90 +1,58 @@
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { getSession } from "@/lib/discord-auth";
-import { getCalendarMonthData } from "@/lib/calendar";
-import { jstToday } from "@/lib/calendar-grid";
+import { getCalendarDayData, getCalendarMonthData } from "@/lib/calendar";
+import { jstToday, parseDateKey } from "@/lib/calendar-grid";
 import { getEventListItems, type EventListFilter } from "@/lib/event-list";
-import CalendarWidget from "@/app/components/CalendarWidget";
+import ScheduleBoard from "@/app/components/ScheduleBoard";
 import EventListPanel from "@/app/components/EventListPanel";
-import Image from "next/image";
 
-const ERROR_MESSAGES: Record<string, string> = {
-  not_member: "対象サーバーのメンバーのみログインできます。",
-  invalid_state: "ログインに失敗しました。もう一度お試しください。",
-  login_failed: "ログイン処理中にエラーが発生しました。",
-};
+const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function Home({
   searchParams,
 }: {
-    searchParams: Promise<{ error?: string; listFilter?: string }>;
+  searchParams: Promise<{ listFilter?: string; date?: string }>;
 }) {
-  const [user, { error, listFilter }] = await Promise.all([getSession(), searchParams]);
+  const [user, { listFilter, date }] = await Promise.all([getSession(), searchParams]);
   const filter: EventListFilter = listFilter === "confirmed" || listFilter === "mine" ? listFilter : "status";
-  const now = jstToday();
+
+  // ?date=YYYY-MM-DD opens that day's panel (shareable link); the server clamps it to the navigable range.
+  const initialDay = date && DATE_KEY_PATTERN.test(date) ? await getCalendarDayData(date) : null;
+  const monthAnchor = initialDay ? parseDateKey(initialDay.date) : jstToday();
+
   const [calendarData, events] = await Promise.all([
-    getCalendarMonthData(now.getUTCFullYear(), now.getUTCMonth()),
+    getCalendarMonthData(monthAnchor.getUTCFullYear(), monthAnchor.getUTCMonth()),
     getEventListItems(filter, user?.id),
   ]);
 
   return (
-    <div className=" flex-col gap-6">
-      <header className="p-4 flex items-center">
-        <Image src='/kusozako_icon.png' alt='アイコン' width={50} height={50} />
-        <h1 className=" text-xl font-bold">
-          クソザコダイス君
-        </h1>
-        <h2 className="ml-4">
-          日程調整ページ
-        </h2>
-        <div className="ml-auto flex gap-4 text-sm items-center">
-          {user ? (
-            <>
-              <span>
-                <span className="text-gray-400"> ログイン中 </span>  <span className="font-semibold">{user.displayName}</span>
-              </span>
-              <form action="/api/auth/logout" method="post">
-                <button type="submit" className="rounded-full border px-4 py-1.5 hover:bg-black/4 dark:hover:bg-white/10">
-                  ログアウト
-                </button>
-              </form>
-            </>
-          ) : (
-            <a href="/api/auth/login" className="rounded-full bg-[#5865F2] px-4 py-1.5 font-medium text-white">
-              Discordでログイン
-            </a>
-          )}
-        </div>
-      </header>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {error && ERROR_MESSAGES[error] && (
-          <p className="text-sm text-red-600 dark:text-red-400">{ERROR_MESSAGES[error]}</p>
-        )}
+    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
+      <ScheduleBoard
+        initialMonth={calendarData}
+        initialDay={initialDay}
+        eventList={
+          <div className="card p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="text-base font-bold">イベント一覧</h2>
+              {user && (
+                <Link href="/events/new" className="btn-primary px-3 py-1.5">
+                  <Plus className="size-4" />
+                  新規作成
+                </Link>
+              )}
+            </div>
 
-      </div>
-
-      <div className="mx-auto w-full max-w-6xl flex flex-col gap-6 lg:flex-row lg:items-start">
-        <CalendarWidget initial={calendarData} />
-
-        <aside className="w-full shrink-0 lg:w-80">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-medium">イベント一覧</h2>
-            {user && (
-              <Link href="/events/new" className="rounded-full bg-[#5865F2] px-3 py-2 text-md font-medium text-white">
-                新規作成
-              </Link>
-            )}
+            <EventListPanel
+              basePath="/"
+              filter={filter}
+              events={events}
+              showMineFilter={Boolean(user)}
+              listClassName="-mx-1 flex max-h-[70vh] flex-col gap-2 overflow-y-auto px-1 pb-1"
+            />
           </div>
-
-          <EventListPanel
-            basePath="/"
-            filter={filter}
-            events={events}
-            showMineFilter={Boolean(user)}
-            listClassName="flex max-h-[80vh] flex-col gap-2 overflow-y-auto pr-1"
-            itemClassName="rounded border p-3 text-sm bg-white dark:bg-zinc-800"
-          />
-        </aside>
-      </div>
+        }
+      />
     </div>
   );
 }

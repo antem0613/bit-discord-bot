@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSiteBaseUrl } from "@/lib/site-url";
 import { verifyBotRequestAuth } from "@/lib/discord-auth";
 import { getFinalizedEventOccurrences } from "@/lib/calendar";
 import { addDays } from "@/lib/calendar-grid";
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
       schedulingDeadlineRaw: String(body.schedulingDeadline ?? ""),
     });
 
-    const baseUrl = (process.env.SITE_BASE_URL || request.nextUrl.origin).replace(/\/+$/, "");
+    const baseUrl = getSiteBaseUrl(request);
     return NextResponse.json({ id: event.id, url: `${baseUrl}/events/${event.id}` });
   } catch (error) {
     if (error instanceof EventValidationError) {

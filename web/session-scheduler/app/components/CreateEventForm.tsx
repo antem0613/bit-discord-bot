@@ -2,10 +2,11 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
+import { LoaderCircle, TriangleAlert } from "lucide-react";
 import { createEvent } from "@/app/actions/events";
-import { DEFAULT_SYMBOL_LABELS, SYMBOL_MARKS, SYMBOL_ORDER } from "@/lib/event-constants";
 import CandidateDatePicker from "@/app/components/CandidateDatePicker";
 import ParticipantPicker from "@/app/components/ParticipantPicker";
+import { FormSection, SymbolLabelFields } from "@/app/components/FormSection";
 import type { GuildMemberSummary } from "@/lib/discord-auth";
 
 export default function CreateEventForm({
@@ -20,60 +21,51 @@ export default function CreateEventForm({
   const [state, formAction, pending] = useActionState(createEvent, undefined);
 
   return (
-    <form action={formAction} className="flex flex-col gap-5">
-      {state?.error && <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>}
+    <form action={formAction} className="flex flex-col gap-4">
+      {state?.error && (
+        <p className="flex items-center gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+          <TriangleAlert className="size-4 shrink-0" />
+          {state.error}
+        </p>
+      )}
 
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">タイトル</span>
-        <input name="title" required className="rounded border px-3 py-2 dark:bg-zinc-900" />
-      </label>
-
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">説明</span>
-        <textarea name="description" rows={3} className="rounded border px-3 py-2 dark:bg-zinc-900" />
-      </label>
-
-      <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium">候補日（連続していなくても可）</span>
-        <CandidateDatePicker name="candidateDates" initialDates={initialDates} />
-      </div>
-
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">日程調整の回答期限（過ぎると自動的に締め切られます）</span>
-        <input
-          type="datetime-local"
-          name="schedulingDeadline"
-          min={deadlineMin}
-          className="rounded border px-3 py-2 dark:bg-zinc-600 dark:text-white"
-        />
-      </label>
-
-      <fieldset className="flex flex-col gap-2 rounded border p-4">
-        <legend className="px-1 text-sm font-medium">回答記号の説明</legend>
-        {SYMBOL_ORDER.map((symbol) => (
-          <label key={symbol} className="flex items-center gap-3">
-            <span className="w-6 text-center text-lg">{SYMBOL_MARKS[symbol]}</span>
-            <input
-              name={`label_${symbol}`}
-              defaultValue={DEFAULT_SYMBOL_LABELS[symbol]}
-              className="flex-1 rounded border px-3 py-1.5 dark:bg-zinc-900"
-            />
+      <FormSection step={1} title="イベントの内容">
+        <div className="flex flex-col gap-4">
+          <label className="flex flex-col gap-1.5">
+            <span className="field-label">タイトル</span>
+            <input name="title" required placeholder="例: 新歓TRPGセッション" className="input" />
           </label>
-        ))}
-      </fieldset>
+          <label className="flex flex-col gap-1.5">
+            <span className="field-label">説明</span>
+            <textarea name="description" rows={3} placeholder="シナリオ名、所要時間、持ち物など" className="input resize-y" />
+          </label>
+        </div>
+      </FormSection>
 
-      <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium">参加者をあらかじめ設定（任意）</span>
+      <FormSection step={2} title="候補日" hint="連続していなくても選べます。もう一度押すと選択を外せます。">
+        <CandidateDatePicker name="candidateDates" initialDates={initialDates} />
+      </FormSection>
+
+      <FormSection step={3} title="回答期限" hint="過ぎると自動的に締め切られます。" optional>
+        <input type="datetime-local" name="schedulingDeadline" min={deadlineMin} className="input sm:max-w-xs" />
+      </FormSection>
+
+      <FormSection step={4} title="回答記号の説明" hint="回答者に表示される各記号の意味です。">
+        <SymbolLabelFields />
+      </FormSection>
+
+      <FormSection step={5} title="参加者をあらかじめ設定" optional>
         <ParticipantPicker name="participantIds" members={guildMembers} />
-      </div>
+      </FormSection>
 
-      <div className="flex items-center gap-4">
-        <button type="submit" disabled={pending} className="rounded-full bg-[#5865F2] px-5 py-2 font-medium text-white disabled:opacity-50">
+      <div className="sticky bottom-0 z-10 -mx-4 flex items-center justify-end gap-2 border-t border-line bg-background/90 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border">
+        <Link href="/" className="btn-ghost">
+          キャンセル
+        </Link>
+        <button type="submit" disabled={pending} className="btn-primary px-6">
+          {pending && <LoaderCircle className="size-4 animate-spin" />}
           作成する
         </button>
-        <Link href="/" className="text-sm underline">
-          カレンダーに戻る
-        </Link>
       </div>
     </form>
   );

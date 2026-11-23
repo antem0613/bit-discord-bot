@@ -123,8 +123,9 @@ model EventFinalDate {
   room    SessionRoom?
 
   @@unique([eventId, date])
-  // 同日・同部屋の重複予約を防止（roomがnullの行同士はPostgres上で重複とみなされない）
-  @@unique([date, room])
+  // 同日・同部屋の重複予約チェック用。キャンセル済みイベントは部屋を占有せず、「他サーバー」は
+  // 同日に複数可のため、DBの一意制約ではなくアプリ側（findRoomConflicts）で判定する。
+  @@index([date, room])
 }
 
 // イベント作成時にホストがあらかじめ指定した「参加者」。回答(ScheduleResponse)の有無に関わらず、

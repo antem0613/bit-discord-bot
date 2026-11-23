@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSiteBaseUrl } from "@/lib/site-url";
 import { verifyBotRequestAuth } from "@/lib/discord-auth";
 import { getRecruitingEvents } from "@/lib/event-list";
 
@@ -9,7 +10,7 @@ export async function GET(request: NextRequest) {
   }
 
   const events = await getRecruitingEvents();
-  const baseUrl = (process.env.SITE_BASE_URL || request.nextUrl.origin).replace(/\/+$/, "");
+  const baseUrl = getSiteBaseUrl(request);
   const withUrls = events.map((e) => ({ ...e, url: `${baseUrl}/events/${e.id}` }));
 
   return NextResponse.json({ events: withUrls });
