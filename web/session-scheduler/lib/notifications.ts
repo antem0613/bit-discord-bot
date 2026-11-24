@@ -5,8 +5,10 @@
 import { AvailabilitySymbol, SchedulingStatus } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { addDays, jstToday } from "@/lib/calendar-grid";
-import { ROOM_LABELS } from "@/lib/event-constants";
+import { ROOM_LABELS, formatTimeRange } from "@/lib/event-constants";
 import { MOCK_ID_PREFIX } from "@/lib/mock-auth";
+import { formatShortDate } from "@/lib/ui-styles";
+import dayjs from "@/lib/dayjs";
 
 const DISCORD_API = "https://discord.com/api/v10";
 const USER_AGENT = "DiscordBot (https://github.com/antem0613/bit-discord-bot, 1.0)";
@@ -111,14 +113,65 @@ export async function notifyRecruitmentAutoClosed(eventId: string, title: string
 export async function notifyEventFinalized(
   eventId: string,
   title: string,
-  finalDateKeys: string[],
+  finalDates: FinalDateSummary[],
   memberIds: string[]
 ): Promise<void> {
   if (memberIds.length === 0) return;
   const url = siteEventUrl(eventId);
   const link = url ? `\n${url}` : "";
-  const datesText = finalDateKeys.join("、");
-  await sendDirectMessages(memberIds, `「${title}」の日程が確定しました。\n実施日: ${datesText}${link}`);
+  const datesText = finalDates.map((f) => `・${formatFinalDateLine(f)}`).join("\n");
+  await sendDirectMessages(memberIds, `「${title}」の日程が確定しました。\n${datesText}${link}`);
+}
+
+export type FinalDateSummary = { date: string; startTime: string | null; endTime: string | null; room: string | null };
+
+// "12/1(火) 20:00〜23:00 セッション部屋１"
+export function formatFinalDateLine(f: FinalDateSummary): string {
+  const time = formatTimeRange(f.startTime, f.endTime);
+  const room = f.room ? ROOM_LABELS[f.room as keyof typeof ROOM_LABELS] : "";
+  return [formatShortDate(f.date), time, room].filter(Boolean).join(" ");
+}
+
+// Sent when the host edits a confirmed event's time/room so participants aren't left with stale info.
+export async function notifyFinalDatesChanged(
+  eventId: string,
+  title: string,
+  finalDates: FinalDateSummary[],
+  memberIds: string[]
+): Promise<void> {
+  if (memberIds.length === 0) return;
+  const url = siteEventUrl(eventId);
+  const link = url ? `\n${url}` : "";
+  const datesText = finalDates.map((f) => `・${formatFinalDateLine(f)}`).join("\n");
+  await sendDirectMessages(memberIds, `「${title}」の実施日の時間・場所が変更されました。\n${datesText}${link}`);
+}
+
+// Sent when the host adds candidate dates to an event that is still collecting answers.
+export async function notifyCandidatesAdded(
+  eventId: string,
+  title: string,
+  addedDateKeys: string[],
+  memberIds: string[]
+): Promise<void> {
+  if (memberIds.length === 0 || addedDateKeys.length === 0) return;
+  const url = siteEventUrl(eventId);
+  const link = url ? `\n${url}` : "";
+  const dates = addedDateKeys.map(formatShortDate).join("、");
+  await sendDirectMessages(memberIds, `「${title}」に候補日が追加されました: ${dates}\n回答をお願いします。${link}`);
+}
+
+// Host-triggered nudge to participants who haven't answered every candidate date yet.
+export async function notifyResponseReminder(
+  eventId: string,
+  title: string,
+  deadline: Date | null,
+  memberIds: string[]
+): Promise<void> {
+  if (memberIds.length === 0) return;
+  const url = siteEventUrl(eventId);
+  const link = url ? `\n${url}` : "";
+  const due = deadline ? `（回答期限: ${dayjs(deadline).tz().format("M/D HH:mm")}）` : "";
+  await sendDirectMessages(memberIds, `「${title}」の日程調整に、まだ回答していない候補日があります${due}。回答をお願いします。${link}`);
 }
 
 export type DayBeforeReminderResult = {
@@ -159,7 +212,13 @@ export async function runDayBeforeReminders(now = jstToday()): Promise<DayBefore
     );
     if (memberIds.length === 0) continue;
 
-    const roomSuffix = tomorrowFinal?.room ? `（${ROOM_LABELS[tomorrowFinal.room]}）` : "";
+    const details = [
+      formatTimeRange(tomorrowFinal?.startTime, tomorrowFinal?.endTime),
+      tomorrowFinal?.room ? ROOM_LABELS[tomorrowFinal.room] : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const roomSuffix = details ? `（${details}）` : "";
     const url = siteEventUrl(event.id);
     const link = url ? `\n${url}` : "";
     await sendDirectMessages(memberIds, `明日は「${event.title}」の実施日です${roomSuffix}。${link}`);

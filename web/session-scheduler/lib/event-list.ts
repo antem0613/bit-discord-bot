@@ -65,7 +65,7 @@ export async function getEventListItems(filter: EventListFilter, userId?: string
         orderBy: { date: "asc" },
         select: { date: true, responses: { where: { memberId: userId ?? "" }, select: { id: true } } },
       },
-      finalDates: { orderBy: { date: "asc" }, select: { date: true } },
+      finalDates: { orderBy: { date: "asc" }, select: { date: true, startTime: true } },
       participants: { where: { memberId: userId ?? "" }, select: { id: true } },
     },
   });
@@ -160,7 +160,7 @@ export async function getRecruitingEvents(): Promise<RecruitingEventSummary[]> {
 export type MyUpcomingEventSummary = {
   id: string;
   title: string;
-  finalDates: { date: string; roomLabel: string | null }[]; // only dates >= today, ascending
+  finalDates: { date: string; startTime: string | null; endTime: string | null; roomLabel: string | null }[]; // only dates >= today, ascending
 };
 
 // Lists FINALIZED events `memberId` participates in (responded to any candidate date, or was
@@ -189,7 +189,7 @@ export async function getMyUpcomingEvents(memberId: string): Promise<MyUpcomingE
       title: e.title,
       finalDates: e.finalDates
         .filter((f) => f.date.getTime() >= today.getTime())
-        .map((f) => ({ date: toDateKey(f.date), roomLabel: f.room ? ROOM_LABELS[f.room] : null })),
+        .map((f) => ({ date: toDateKey(f.date), startTime: f.startTime, endTime: f.endTime, roomLabel: f.room ? ROOM_LABELS[f.room] : null })),
     }))
     .sort((a, b) => (a.finalDates[0]?.date ?? "").localeCompare(b.finalDates[0]?.date ?? ""));
 }

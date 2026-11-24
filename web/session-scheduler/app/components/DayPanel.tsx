@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ROOM_LABELS, isExclusiveRoom } from "@/lib/event-constants";
+import { ROOM_LABELS, formatTimeRange, isExclusiveRoom } from "@/lib/event-constants";
 import type { CalendarDayData } from "@/lib/calendar";
 import { WEEKDAY_LABELS, formatLongDate, roomStyle, weekdayOf, weekdayTextClass } from "@/lib/ui-styles";
-import { CalendarClock, CalendarPlus, ChevronLeft, ChevronRight, LoaderCircle, MapPin, Plus, X } from "lucide-react";
+import { CalendarClock, CalendarPlus, ChevronLeft, ChevronRight, Clock, LoaderCircle, MapPin, Plus, X } from "lucide-react";
 
 const ROOMS = Object.keys(ROOM_LABELS) as (keyof typeof ROOM_LABELS)[];
 
@@ -107,6 +107,12 @@ export default function DayPanel({
                       <span className={`absolute inset-y-0 left-0 w-1 ${e.cancelled ? "bg-zinc-400" : style.bar}`} />
                       <p className={`font-semibold ${e.cancelled ? "line-through" : ""}`}>{e.title}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        {!e.cancelled && (e.startTime || e.endTime) && (
+                          <span className="badge bg-surface-3 text-foreground tabular-nums">
+                            <Clock className="size-3" />
+                            {formatTimeRange(e.startTime, e.endTime)}
+                          </span>
+                        )}
                         {e.cancelled ? (
                           <span className="badge bg-red-500/15 text-red-700 dark:text-red-300">キャンセル</span>
                         ) : (

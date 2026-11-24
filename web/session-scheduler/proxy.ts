@@ -17,8 +17,9 @@ import { MOCK_ID_PREFIX, isMockAuthEnabled } from "@/lib/mock-auth";
 
 const MEMBERSHIP_RECHECK_MS = 24 * 60 * 60 * 1000; // once a day
 
-// Reachable without logging in. /api/bot/* authenticates with BOT_EVENTS_SECRET instead.
-const PUBLIC_PREFIXES = ["/login", "/api/auth/", "/api/bot/"];
+// Reachable without logging in. /api/bot/* authenticates with BOT_EVENTS_SECRET instead, and
+// /api/ical/<token> with the personal feed token (calendar apps cannot do Discord login).
+const PUBLIC_PREFIXES = ["/login", "/api/auth/", "/api/bot/", "/api/ical/"];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PREFIXES.some((p) => pathname === p.replace(/\/$/, "") || pathname.startsWith(p));

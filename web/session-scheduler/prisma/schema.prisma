@@ -41,6 +41,8 @@ model Member {
   id          String  @id // Discord user ID
   username    String
   displayName String? // 対象サーバーでのサーバープロフィール（ニックネーム）
+  // 個人用iCalフィードURLの秘密トークン（未発行ならnull。再発行で旧URLは無効になる）
+  icalToken   String? @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -48,6 +50,7 @@ model Member {
   createdEvents  Event[]            @relation("EventCreator")
   responses      ScheduleResponse[]
   participations EventParticipant[]
+  comments       EventComment[]
 }
 
 model Event {
@@ -63,6 +66,8 @@ model Event {
   schedulingDeadline DateTime?
   // 作成者が任意のタイミングで手動締め切りした日時
   closedAt           DateTime?
+  // 未回答者へのリマインドDMを最後に送った日時（連投防止のクールダウン判定に使う）
+  lastRemindedAt     DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -72,6 +77,7 @@ model Event {
   responses      ScheduleResponse[]
   finalDates     EventFinalDate[]
   participants   EventParticipant[]
+  comments       EventComment[]
 }
 
 // 日程調整の候補日。連続している必要はない
@@ -109,6 +115,8 @@ model ScheduleResponse {
   memberId        String
 
   symbol    AvailabilitySymbol
+  // △のときだけ付けられる短いメモ（例: 「22時まで」）。全員に表示される
+  note      String?            @db.VarChar(30)
   updatedAt DateTime           @updatedAt
 
   @@unique([candidateDateId, memberId])
@@ -121,6 +129,9 @@ model EventFinalDate {
   eventId String
   date    DateTime     @db.Date
   room    SessionRoom?
+  // 開始・終了時刻（JST, "HH:mm"、任意）。終了は日付をまたぐ場合もあるため開始より前でもよい
+  startTime String? @db.VarChar(5)
+  endTime   String? @db.VarChar(5)
 
   @@unique([eventId, date])
   // 同日・同部屋の重複予約チェック用。キャンセル済みイベントは部屋を占有せず、「他サーバー」は
@@ -128,9 +139,9 @@ model EventFinalDate {
   @@index([date, room])
 }
 
-// イベント作成時にホストがあらかじめ指定した「参加者」。回答(ScheduleResponse)の有無に関わらず、
-// そのイベントに参加予定であることを示す内部的な印として使う（例: イベント一覧の「参加イベント」フィルタ）。
-// 画面上に招待一覧として表示することはせず、参加判定にのみ用いる。
+// イベント作成時（または編集時）にホストが指定した「参加者」。回答(ScheduleResponse)の有無に関わらず、
+// そのイベントに参加予定であることを示す印として使う（例: イベント一覧の「参加イベント」フィルタ）。
+// 一覧として見えるのは作成者だけ（未回答者の確認・リマインド用）。
 model EventParticipant {
   id       String @id @default(uuid())
   event    Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -139,6 +150,21 @@ model EventParticipant {
   memberId String
 
   createdAt DateTime @default(now())
+
+  @@unique([eventId, memberId])
+}
+
+// イベントへのひとことコメント（1人1件、全員に表示）
+model EventComment {
+  id       String @id @default(uuid())
+  event    Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId  String
+  member   Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberId String
+  body     String @db.VarChar(200)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([eventId, memberId])
 }

@@ -48,6 +48,7 @@ export default async function Home({
               filter={filter}
               events={events}
               showMineFilter={Boolean(user)}
+              currentUserId={user?.id}
               listClassName="-mx-1 flex max-h-[70vh] flex-col gap-2 overflow-y-auto px-1 pb-1"
             />
           </div>

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ChevronDown, Crown, Users } from "lucide-react";
-import { SYMBOL_MARKS } from "@/lib/event-constants";
+import { Check, ChevronDown, Crown, MessageSquareText, Users } from "lucide-react";
+import { NOTE_MAX_LENGTH, SYMBOL_MARKS } from "@/lib/event-constants";
 import { formatShortDate, weekdayOf, weekdayTextClass } from "@/lib/ui-styles";
 import type { AvailabilitySymbol } from "@/app/generated/prisma/enums";
 
@@ -12,6 +12,9 @@ export type ResponseRow = {
   counts: Record<AvailabilitySymbol, number>;
   isTop: boolean;
   mySelection: AvailabilitySymbol | null;
+  myNote: string | null;
+  // Notes on △ answers for this date, visible to everyone.
+  notes: { name: string; note: string }[];
 };
 
 export type Responder = { name: string; symbol: AvailabilitySymbol };
@@ -30,6 +33,7 @@ export default function ResponseTable({
   isCreator,
   responderDetails,
   onSelectSymbol,
+  onSaveNote,
 }: {
   symbolOrder: AvailabilitySymbol[];
   rows: ResponseRow[];
@@ -37,6 +41,7 @@ export default function ResponseTable({
   isCreator: boolean;
   responderDetails: Record<string, Responder[]>;
   onSelectSymbol: (candidateDateId: string, symbol: AvailabilitySymbol) => Promise<void>;
+  onSaveNote?: (candidateDateId: string, note: string) => Promise<{ error?: string }>;
 }) {
   const [selectedDateId, setSelectedDateId] = useState<string | null>(null);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
@@ -157,6 +162,23 @@ export default function ResponseTable({
                     )}
                   </div>
                 )}
+
+                {canAnswer && onSaveNote && row.mySelection === "TRIANGLE" && (
+                  <NoteInput key={row.id} initial={row.myNote ?? ""} onSave={(note) => onSaveNote(row.id, note)} />
+                )}
+
+                {row.notes.length > 0 && (
+                  <ul className="flex flex-wrap gap-1.5 text-xs">
+                    {row.notes.map((n, i) => (
+                      <li key={i} className="flex items-center gap-1 rounded-full bg-amber-500/12 px-2.5 py-1 text-amber-900 dark:text-amber-100">
+                        <span className="font-bold text-amber-600 dark:text-amber-400">△</span>
+                        <span className="font-semibold">{n.name}</span>
+                        <span className="text-muted">:</span>
+                        {n.note}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
 
@@ -181,5 +203,60 @@ export default function ResponseTable({
         );
       })}
     </ul>
+  );
+}
+
+// Short note on my own △ answer. Saves on blur / Enter when changed.
+function NoteInput({ initial, onSave }: { initial: string; onSave: (note: string) => Promise<{ error?: string }> }) {
+  const [value, setValue] = useState(initial);
+  const [saved, setSaved] = useState(initial);
+  const [status, setStatus] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function save() {
+    const next = value.trim();
+    if (next === saved) return;
+    startTransition(async () => {
+      const result = await onSave(next);
+      if (result.error) {
+        setStatus({ kind: "error", text: result.error });
+      } else {
+        setSaved(next);
+        setStatus({ kind: "ok", text: "保存しました" });
+      }
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="flex items-center gap-2">
+        <MessageSquareText className="size-4 shrink-0 text-amber-500" />
+        <input
+          value={value}
+          maxLength={NOTE_MAX_LENGTH}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setStatus(null);
+          }}
+          onBlur={save}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              save();
+            }
+          }}
+          disabled={isPending}
+          placeholder="△のメモ（例: 22時まで）※全員に表示"
+          aria-label="△のメモ"
+          className="input py-1.5 text-xs"
+        />
+      </label>
+      {status && (
+        <p className={`flex items-center gap-1 pl-6 text-[11px] ${status.kind === "error" ? "text-danger" : "text-emerald-600 dark:text-emerald-400"}`}>
+          {status.kind === "ok" && <Check className="size-3" />}
+          {status.text}
+        </p>
+      )}
+    </div>
   );
 }

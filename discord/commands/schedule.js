@@ -204,6 +204,12 @@ function truncateLines(lines, maxLength) {
     return { shown, omitted };
 }
 
+// "20:00", "23:00" -> "20:00〜23:00"; missing parts are omitted (older API responses have neither).
+function formatTimeRange(startTime, endTime) {
+    if (!startTime && !endTime) return "";
+    return `${startTime ?? ""}〜${endTime ?? ""}`;
+}
+
 function formatEventListMessage({ year, month, day, events }) {
     const label = day ? `${year}年${month}月${day}日` : `${year}年${month}月`;
 
@@ -213,7 +219,8 @@ function formatEventListMessage({ year, month, day, events }) {
 
     const lines = events.map((e) => {
         const title = e.cancelled ? `~~${e.title}~~（キャンセル）` : e.title;
-        const room = !e.cancelled && e.roomLabel ? `（${e.roomLabel}）` : "";
+        const details = e.cancelled ? "" : [formatTimeRange(e.startTime, e.endTime), e.roomLabel].filter(Boolean).join(" ");
+        const room = details ? `（${details}）` : "";
         return `- ${e.date} ${title}${room}`;
     });
 
@@ -248,7 +255,12 @@ function formatMyUpcomingEventsMessage(events) {
     }
 
     const lines = events.map((e) => {
-        const dates = e.finalDates.map((f) => (f.roomLabel ? `${f.date}（${f.roomLabel}）` : f.date)).join("、");
+        const dates = e.finalDates
+            .map((f) => {
+                const details = [formatTimeRange(f.startTime, f.endTime), f.roomLabel].filter(Boolean).join(" ");
+                return details ? `${f.date}（${details}）` : f.date;
+            })
+            .join("、");
         return `- 「${e.title}」\n  実施日: ${dates}\n  ${e.url}`;
     });
 

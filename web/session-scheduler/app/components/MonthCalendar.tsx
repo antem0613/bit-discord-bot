@@ -134,6 +134,7 @@ export default function MonthCalendar({
                     key={e.id}
                     className={`truncate rounded-md px-1.5 py-0.5 text-[11px] font-medium ${e.cancelled ? CANCELLED_CHIP : roomStyle(e.room).chip}`}
                   >
+                    {e.startTime && <span className="mr-1 font-semibold tabular-nums opacity-80">{e.startTime}</span>}
                     {e.title}
                   </span>
                 ))}
