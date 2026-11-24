@@ -1,4 +1,6 @@
+import { MessageFlags } from "discord.js";
 
+// 通常のコマンド実行エラーや例外ではBotはシャットダウンしません（致命的な場合のみプロセス終了）
 async function runHandler(interaction, data, run) {
     try {
         await run();
@@ -10,15 +12,34 @@ async function runHandler(interaction, data, run) {
         } else {
             console.error('InteractionCreate Error:', error);
         }
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({ content: 'error occurred while executing command.', ephemeral: true });
-        } else {
-            await interaction.reply({ content: 'error occurred while executing command.', ephemeral: true });
+        const reply = { content: 'コマンドの実行中にエラーが発生しました。', flags: MessageFlags.Ephemeral };
+        try {
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp(reply);
+            } else {
+                await interaction.reply(reply);
+            }
+        } catch (replyError) {
+            console.error('Failed to report the error to the user:', replyError);
         }
     }
 }
 
 export default async (interaction, data) => {
+    if (interaction.isAutocomplete()) {
+        // Suggestions while typing an option (e.g. TTS speaker, dice system). Must answer within 3s,
+        // and a failure must never surface as a reply, so errors fall back to an empty list.
+        const command = interaction.client.commands.get(interaction.commandName);
+        if (!command?.autocomplete) return;
+        try {
+            await command.autocomplete(interaction, data);
+        } catch (error) {
+            console.error(`Autocomplete error for "${interaction.commandName}":`, error);
+            if (!interaction.responded) await interaction.respond([]).catch(() => {});
+        }
+        return;
+    }
+
     if (interaction.isChatInputCommand()) {
         const command = interaction.client.commands.get(interaction.commandName);
         if (!command) {

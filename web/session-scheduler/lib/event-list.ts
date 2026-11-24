@@ -193,3 +193,59 @@ export async function getMyUpcomingEvents(memberId: string): Promise<MyUpcomingE
     }))
     .sort((a, b) => (a.finalDates[0]?.date ?? "").localeCompare(b.finalDates[0]?.date ?? ""));
 }
+
+export type PendingEventSummary = {
+  id: string;
+  title: string;
+  creatorDisplayName: string;
+  answered: number; // candidate dates this member has answered
+  total: number; // candidate dates
+  invited: boolean; // pre-set as a participant by the host
+  schedulingDeadline: string | null; // "YYYY-MM-DD HH:mm" (JST), or null if unset
+};
+
+// Open events (still accepting answers, not created by `memberId`) where the member hasn't answered
+// every candidate date yet. Same rule as the website's "未回答 / 一部回答" badges. Invited events come
+// first, then the nearest deadline. Used by the Discord bot's "/schedule todo" command.
+export async function getPendingEventsForMember(memberId: string): Promise<PendingEventSummary[]> {
+  const now = new Date();
+  const events = await prisma.event.findMany({
+    where: {
+      status: SchedulingStatus.SCHEDULING,
+      closedAt: null,
+      creatorId: { not: memberId },
+      OR: [{ schedulingDeadline: null }, { schedulingDeadline: { gt: now } }],
+    },
+    include: {
+      creator: true,
+      candidateDates: { select: { date: true, responses: { where: { memberId }, select: { id: true } } } },
+      participants: { where: { memberId }, select: { id: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const today = jstToday();
+  return events
+    .filter((e) => !isFinished(e.candidateDates.map((c) => c.date), today))
+    .map((e) => ({
+      id: e.id,
+      title: e.title,
+      creatorDisplayName: e.creator.displayName ?? e.creator.username,
+      answered: e.candidateDates.filter((c) => c.responses.length > 0).length,
+      total: e.candidateDates.length,
+      invited: e.participants.length > 0,
+      deadlineMs: e.schedulingDeadline?.getTime() ?? Infinity,
+      schedulingDeadline: e.schedulingDeadline ? dayjs(e.schedulingDeadline).tz().format("YYYY-MM-DD HH:mm") : null,
+    }))
+    .filter((e) => e.answered < e.total)
+    .sort((a, b) => Number(b.invited) - Number(a.invited) || a.deadlineMs - b.deadlineMs)
+    .map((e) => ({
+      id: e.id,
+      title: e.title,
+      creatorDisplayName: e.creatorDisplayName,
+      answered: e.answered,
+      total: e.total,
+      invited: e.invited,
+      schedulingDeadline: e.schedulingDeadline,
+    }));
+}

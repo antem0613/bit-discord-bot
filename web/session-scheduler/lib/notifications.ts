@@ -15,12 +15,50 @@ const USER_AGENT = "DiscordBot (https://github.com/antem0613/bit-discord-bot, 1.
 
 // Builds the public event URL for a DM, or null (omitted from the message) if SITE_BASE_URL isn't set.
 function siteEventUrl(eventId: string): string | null {
-  const base = process.env.SITE_BASE_URL;
+  const base = process.env.SITE_BASE_URL?.trim();
   if (!base) {
     console.error("[notifications] Missing SITE_BASE_URL env var; omitting event link from DM.");
     return null;
   }
-  return `${base.replace(/\/$/, "")}/events/${eventId}`;
+  const withScheme = /^https?:\/\//i.test(base) ? base : `http://${base}`;
+  return `${withScheme.replace(/\/+$/, "")}/events/${eventId}`;
+}
+
+// Embed accent colors (Discord-style palette).
+const COLORS = {
+  info: 0x5865f2, // blurple: new info / please answer
+  success: 0x23a55a, // green: confirmed
+  warning: 0xf0b232, // amber: changes, reminders
+  muted: 0x80848e, // grey: closed
+} as const;
+
+// One DM: shown as an embed with an optional link button to the event page.
+export type DirectMessage = {
+  title: string; // also used as the plain-text preview in push notifications
+  description?: string;
+  fields?: { name: string; value: string }[];
+  color?: number;
+  url?: string | null;
+  buttonLabel?: string;
+};
+
+// Discord message payload for a DirectMessage. Exported for tests.
+export function buildDirectMessagePayload(msg: DirectMessage, { withButton = true } = {}) {
+  const embed = {
+    title: msg.title.slice(0, 256),
+    ...(msg.description ? { description: msg.description.slice(0, 4096) } : {}),
+    ...(msg.url ? { url: msg.url } : {}),
+    color: msg.color ?? COLORS.info,
+    ...(msg.fields?.length
+      ? { fields: msg.fields.slice(0, 25).map((f) => ({ name: f.name.slice(0, 256), value: f.value.slice(0, 1024) })) }
+      : {}),
+    footer: { text: "クソザコダイス君 日程調整" },
+  };
+  const components =
+    withButton && msg.url
+      ? [{ type: 1, components: [{ type: 2, style: 5, label: (msg.buttonLabel ?? "イベントを開く").slice(0, 80), url: msg.url }] }]
+      : [];
+  return { content: msg.title.slice(0, 2000), embeds: [embed], components };
 }
 
 async function openDmChannel(userId: string, botToken: string): Promise<string | null> {
@@ -43,10 +81,10 @@ async function openDmChannel(userId: string, botToken: string): Promise<string |
 
 // Sends a single DM. Never throws: logs and returns on any failure (missing token, DMs disabled,
 // user has no mutual server with the bot, rate limiting, ...).
-async function sendDirectMessage(userId: string, content: string): Promise<void> {
+async function sendDirectMessage(userId: string, msg: DirectMessage): Promise<void> {
   // Mock-login test users (lib/mock-auth.ts) aren't real Discord accounts.
   if (userId.startsWith(MOCK_ID_PREFIX)) {
-    console.log(`[notifications] Skipping DM to mock user ${userId}: ${content.split("\n")[0]}`);
+    console.log(`[notifications] Skipping DM to mock user ${userId}: ${msg.title}`);
     return;
   }
   try {
@@ -59,15 +97,24 @@ async function sendDirectMessage(userId: string, content: string): Promise<void>
     const channelId = await openDmChannel(userId, botToken);
     if (!channelId) return;
 
-    const res = await fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bot ${botToken}`,
-        "Content-Type": "application/json",
-        "User-Agent": USER_AGENT,
-      },
-      body: JSON.stringify({ content }),
-    });
+    const post = (withButton: boolean) =>
+      fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bot ${botToken}`,
+          "Content-Type": "application/json",
+          "User-Agent": USER_AGENT,
+        },
+        body: JSON.stringify(buildDirectMessagePayload(msg, { withButton })),
+      });
+
+    let res = await post(true);
+    // Discord rejects link buttons whose URL it considers invalid (400). The embed still carries the
+    // link, so retry once without the button rather than dropping the notification.
+    if (res.status === 400 && msg.url) {
+      console.error(`[notifications] DM with link button rejected for user ${userId}; retrying without button.`);
+      res = await post(false);
+    }
     if (!res.ok) {
       console.error(`[notifications] Failed to send DM to user ${userId}: ${res.status}`);
     }
@@ -76,35 +123,47 @@ async function sendDirectMessage(userId: string, content: string): Promise<void>
   }
 }
 
-async function sendDirectMessages(userIds: string[], content: string): Promise<void> {
-  await Promise.all(userIds.map((id) => sendDirectMessage(id, content)));
+async function sendDirectMessages(userIds: string[], msg: DirectMessage): Promise<void> {
+  await Promise.all(userIds.map((id) => sendDirectMessage(id, msg)));
 }
 
 // Notifies members freshly pre-set as participants at event-creation time (see `EventParticipant`).
 // Not used for reschedule-carried-over participants; those get `notifyEventRescheduled` instead.
 export async function notifyParticipantsAdded(eventId: string, title: string, memberIds: string[]): Promise<void> {
   if (memberIds.length === 0) return;
-  const url = siteEventUrl(eventId);
-  const link = url ? `\n${url}` : "";
-  await sendDirectMessages(memberIds, `「${title}」の参加者として登録されました。${link}`);
+  await sendDirectMessages(memberIds, {
+    title: `「${title}」の参加者に登録されました`,
+    description: "候補日への回答をお願いします。",
+    color: COLORS.info,
+    url: siteEventUrl(eventId),
+    buttonLabel: "回答する",
+  });
 }
 
 // Notifies everyone participating in an event (pre-set participants + prior responders, both already
 // carried over into `EventParticipant` by `rescheduleEvent`) that it has been rescheduled.
 export async function notifyEventRescheduled(eventId: string, title: string, memberIds: string[]): Promise<void> {
   if (memberIds.length === 0) return;
-  const url = siteEventUrl(eventId);
-  const link = url ? `\n${url}` : "";
-  await sendDirectMessages(memberIds, `「${title}」の日程が再調整されました。新しい候補日への回答をお願いします。${link}`);
+  await sendDirectMessages(memberIds, {
+    title: `「${title}」の日程が再調整されました`,
+    description: "新しい候補日への回答をお願いします。",
+    color: COLORS.warning,
+    url: siteEventUrl(eventId),
+    buttonLabel: "回答する",
+  });
 }
 
 // Notifies the host when their event's response period closed automatically because its deadline
 // passed (see `ensureEventClosed`) — as opposed to a manual close they triggered themselves via the
 // "参加受付を締め切る" button, which they're already aware of and don't need a DM for.
 export async function notifyRecruitmentAutoClosed(eventId: string, title: string, hostId: string): Promise<void> {
-  const url = siteEventUrl(eventId);
-  const link = url ? `\n${url}` : "";
-  await sendDirectMessages([hostId], `「${title}」の参加者募集が、回答期限により自動的に終了しました。${link}`);
+  await sendDirectMessages([hostId], {
+    title: `「${title}」の募集が締め切られました`,
+    description: "回答期限を過ぎたため、自動的に受付を終了しました。実施日を決定してください。",
+    color: COLORS.muted,
+    url: siteEventUrl(eventId),
+    buttonLabel: "実施日を決める",
+  });
 }
 
 // Notifies everyone who engaged with the event (answered any candidate date, or was pre-set/carried-
@@ -117,10 +176,12 @@ export async function notifyEventFinalized(
   memberIds: string[]
 ): Promise<void> {
   if (memberIds.length === 0) return;
-  const url = siteEventUrl(eventId);
-  const link = url ? `\n${url}` : "";
-  const datesText = finalDates.map((f) => `・${formatFinalDateLine(f)}`).join("\n");
-  await sendDirectMessages(memberIds, `「${title}」の日程が確定しました。\n${datesText}${link}`);
+  await sendDirectMessages(memberIds, {
+    title: `「${title}」の日程が確定しました`,
+    fields: [{ name: "実施日", value: finalDates.map((f) => `・${formatFinalDateLine(f)}`).join("\n") }],
+    color: COLORS.success,
+    url: siteEventUrl(eventId),
+  });
 }
 
 export type FinalDateSummary = { date: string; startTime: string | null; endTime: string | null; room: string | null };
@@ -140,10 +201,12 @@ export async function notifyFinalDatesChanged(
   memberIds: string[]
 ): Promise<void> {
   if (memberIds.length === 0) return;
-  const url = siteEventUrl(eventId);
-  const link = url ? `\n${url}` : "";
-  const datesText = finalDates.map((f) => `・${formatFinalDateLine(f)}`).join("\n");
-  await sendDirectMessages(memberIds, `「${title}」の実施日の時間・場所が変更されました。\n${datesText}${link}`);
+  await sendDirectMessages(memberIds, {
+    title: `「${title}」の時間・場所が変更されました`,
+    fields: [{ name: "変更後の実施日", value: finalDates.map((f) => `・${formatFinalDateLine(f)}`).join("\n") }],
+    color: COLORS.warning,
+    url: siteEventUrl(eventId),
+  });
 }
 
 // Sent when the host adds candidate dates to an event that is still collecting answers.
@@ -154,10 +217,14 @@ export async function notifyCandidatesAdded(
   memberIds: string[]
 ): Promise<void> {
   if (memberIds.length === 0 || addedDateKeys.length === 0) return;
-  const url = siteEventUrl(eventId);
-  const link = url ? `\n${url}` : "";
-  const dates = addedDateKeys.map(formatShortDate).join("、");
-  await sendDirectMessages(memberIds, `「${title}」に候補日が追加されました: ${dates}\n回答をお願いします。${link}`);
+  await sendDirectMessages(memberIds, {
+    title: `「${title}」に候補日が追加されました`,
+    description: "追加された日への回答をお願いします。",
+    fields: [{ name: "追加された候補日", value: addedDateKeys.map(formatShortDate).join("、") }],
+    color: COLORS.info,
+    url: siteEventUrl(eventId),
+    buttonLabel: "回答する",
+  });
 }
 
 // Host-triggered nudge to participants who haven't answered every candidate date yet.
@@ -168,10 +235,14 @@ export async function notifyResponseReminder(
   memberIds: string[]
 ): Promise<void> {
   if (memberIds.length === 0) return;
-  const url = siteEventUrl(eventId);
-  const link = url ? `\n${url}` : "";
-  const due = deadline ? `（回答期限: ${dayjs(deadline).tz().format("M/D HH:mm")}）` : "";
-  await sendDirectMessages(memberIds, `「${title}」の日程調整に、まだ回答していない候補日があります${due}。回答をお願いします。${link}`);
+  await sendDirectMessages(memberIds, {
+    title: `「${title}」の回答をお願いします`,
+    description: "まだ回答していない候補日があります。",
+    fields: deadline ? [{ name: "回答期限", value: dayjs(deadline).tz().format("M/D HH:mm") }] : [],
+    color: COLORS.warning,
+    url: siteEventUrl(eventId),
+    buttonLabel: "回答する",
+  });
 }
 
 export type DayBeforeReminderResult = {
@@ -218,10 +289,12 @@ export async function runDayBeforeReminders(now = jstToday()): Promise<DayBefore
     ]
       .filter(Boolean)
       .join(" ");
-    const roomSuffix = details ? `（${details}）` : "";
-    const url = siteEventUrl(event.id);
-    const link = url ? `\n${url}` : "";
-    await sendDirectMessages(memberIds, `明日は「${event.title}」の実施日です${roomSuffix}。${link}`);
+    await sendDirectMessages(memberIds, {
+      title: `明日は「${event.title}」の実施日です`,
+      ...(details ? { fields: [{ name: "時間・場所", value: details }] } : {}),
+      color: COLORS.success,
+      url: siteEventUrl(event.id),
+    });
 
     notifiedEvents.push({ eventId: event.id, title: event.title, memberCount: memberIds.length });
   }

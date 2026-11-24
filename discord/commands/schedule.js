@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from "@discordjs/builders";
-import { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
+import { ActionRowBuilder, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
 
 const SCHEDULER_BASE_URL = process.env.SCHEDULER_BASE_URL || "http://localhost:3002";
 const CREATE_MODAL_CUSTOM_ID = "schedule:create";
@@ -45,6 +45,10 @@ export const data = new SlashCommandBuilder()
   .addSubcommand(subcommand =>
     subcommand.setName("mine")
        .setDescription("自分が参加していて、実施日が今日以降の確定イベント一覧を表示します。")
+  )
+  .addSubcommand(subcommand =>
+    subcommand.setName("todo")
+       .setDescription("自分がまだ回答していない募集中のイベント一覧を表示します。")
   );
 
 export const execute = async (interaction) => {
@@ -57,7 +61,7 @@ export const execute = async (interaction) => {
 
     if (subcommand === "create") {
         if (process.env.DISCORD_GUILD_ID && interaction.guildId !== process.env.DISCORD_GUILD_ID) {
-            await interaction.reply({ content: "このサーバーでは日程調整イベントの作成はできません。", ephemeral: true });
+            await interaction.reply({ content: "このサーバーでは日程調整イベントの作成はできません。", flags: MessageFlags.Ephemeral });
             return;
         }
 
@@ -106,7 +110,7 @@ export const execute = async (interaction) => {
 
     if (subcommand === "list") {
         if (process.env.DISCORD_GUILD_ID && interaction.guildId !== process.env.DISCORD_GUILD_ID) {
-            await interaction.reply({ content: "このサーバーでは日程調整機能は利用できません。", ephemeral: true });
+            await interaction.reply({ content: "このサーバーでは日程調整機能は利用できません。", flags: MessageFlags.Ephemeral });
             return;
         }
 
@@ -114,7 +118,7 @@ export const execute = async (interaction) => {
         const year = interaction.options.getInteger("year");
         const day = interaction.options.getInteger("day");
 
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         const params = new URLSearchParams({ month: String(month) });
         if (year !== null) params.set("year", String(year));
@@ -140,11 +144,11 @@ export const execute = async (interaction) => {
 
     if (subcommand === "recruiting") {
         if (process.env.DISCORD_GUILD_ID && interaction.guildId !== process.env.DISCORD_GUILD_ID) {
-            await interaction.reply({ content: "このサーバーでは日程調整機能は利用できません。", ephemeral: true });
+            await interaction.reply({ content: "このサーバーでは日程調整機能は利用できません。", flags: MessageFlags.Ephemeral });
             return;
         }
 
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         try {
             const res = await fetch(`${SCHEDULER_BASE_URL}/api/bot/events/recruiting`, {
@@ -164,13 +168,41 @@ export const execute = async (interaction) => {
         return;
     }
 
-    if (subcommand === "mine") {
+    if (subcommand === "todo") {
         if (process.env.DISCORD_GUILD_ID && interaction.guildId !== process.env.DISCORD_GUILD_ID) {
-            await interaction.reply({ content: "このサーバーでは日程調整機能は利用できません。", ephemeral: true });
+            await interaction.reply({ content: "このサーバーでは日程調整機能は利用できません。", flags: MessageFlags.Ephemeral });
             return;
         }
 
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+        const params = new URLSearchParams({ userId: interaction.user.id });
+
+        try {
+            const res = await fetch(`${SCHEDULER_BASE_URL}/api/bot/events/todo?${params.toString()}`, {
+                headers: { Authorization: `Bearer ${process.env.BOT_EVENTS_SECRET}` },
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                await interaction.editReply(`未回答のイベント一覧を取得できませんでした: ${data.error ?? res.status}`);
+                return;
+            }
+
+            await interaction.editReply(formatTodoEventsMessage(data.events));
+        } catch (error) {
+            console.error("[schedule todo] Failed to call scheduler API:", error);
+            await interaction.editReply("イベント一覧の取得中にエラーが発生しました。しばらくしてからもう一度お試しください。");
+        }
+        return;
+    }
+
+    if (subcommand === "mine") {
+        if (process.env.DISCORD_GUILD_ID && interaction.guildId !== process.env.DISCORD_GUILD_ID) {
+            await interaction.reply({ content: "このサーバーでは日程調整機能は利用できません。", flags: MessageFlags.Ephemeral });
+            return;
+        }
+
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         const params = new URLSearchParams({ userId: interaction.user.id });
 
@@ -249,6 +281,25 @@ function formatRecruitingEventsMessage(events) {
     return `${header}\n${shown.join("\n")}${suffix}`;
 }
 
+export function formatTodoEventsMessage(events) {
+    if (events.length === 0) {
+        return "未回答の募集はありません。";
+    }
+
+    const lines = events.map((e) => {
+        const progress = e.answered === 0 ? "未回答" : `一部回答 ${e.answered}/${e.total}`;
+        const invited = e.invited ? "【参加者に指定】" : "";
+        const deadline = e.schedulingDeadline ? `（回答期限: ${e.schedulingDeadline}）` : "";
+        return `- ${invited}「${e.title}」 ${progress}${deadline}\n  主催: ${e.creatorDisplayName}\n  ${e.url}`;
+    });
+
+    const header = `未回答の募集（${events.length}件）`;
+    const { shown, omitted } = truncateLines(lines, 1800);
+    const suffix = omitted > 0 ? `\n…他 ${omitted} 件` : "";
+
+    return `${header}\n${shown.join("\n")}${suffix}`;
+}
+
 function formatMyUpcomingEventsMessage(events) {
     if (events.length === 0) {
         return "参加していて実施日が今日以降の確定イベントはありません。";
@@ -300,7 +351,7 @@ function normalizeDeadline(raw) {
 export async function handleModalSubmit(interaction) {
     if (interaction.customId !== CREATE_MODAL_CUSTOM_ID) return;
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const title = interaction.fields.getTextInputValue("title").trim();
     const description = interaction.fields.getTextInputValue("description").trim();

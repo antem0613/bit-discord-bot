@@ -25,11 +25,7 @@ const rest = new REST().setToken(process.env.TOKEN);
         const data = await rest.put(
             Routes.applicationCommands(process.env.APPLICATION_ID),
             {body: commands});
-        
-        const dataGuild = await rest.put(
-            Routes.applicationCommands(process.env.APPLICATION_ID),
-            {body: commands});
-        
+
         console.log(`[INIT] Successfully reloaded ${data.length} slash-commands.`);
     }
     catch(error){

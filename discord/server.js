@@ -30,31 +30,32 @@ let healthStatus = {
     error: null
 }
 
+// Checks every target (each with its own timeout) and restarts the ones that fail. The overall status
+// is HEALTHY only if every target answered OK; otherwise it stays UNHEALTHY with the collected errors.
 const performHealthCheck = async () => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), CONFIG.TIMEOUT);
+    const errors = [];
 
     for(let i = 0; i < CONFIG.TARGETS.length; i++){
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), CONFIG.TIMEOUT);
         try {
             const response = await fetch(CONFIG.TARGETS[i].URL, { signal: controller.signal });
-            if (response.ok) {
-                continue;
-            } else {
+            if (!response.ok) {
                 throw new Error(`Status code: ${response.status}`);
             }
         } catch (err) {
-            healthStatus.status = "UNHEALTHY";
-            healthStatus.lastCheckAt = new Date();
-            healthStatus.error = err.name === 'AbortError' ? 'Timed out' : err.message;
-            console.error(`Health check for ${CONFIG.TARGETS[i].NAME} failed at ${healthStatus.lastCheckAt.toISOString()}: ${healthStatus.error}`);
+            const message = err.name === 'AbortError' ? 'Timed out' : err.message;
+            errors.push(`${CONFIG.TARGETS[i].NAME}: ${message}`);
+            console.error(`Health check for ${CONFIG.TARGETS[i].NAME} failed at ${new Date().toISOString()}: ${message}`);
             runFailureCommand(i);
+        } finally {
+            clearTimeout(timeoutId);
         }
     }
 
-    healthStatus.status = "HEALTHY";
+    healthStatus.status = errors.length === 0 ? "HEALTHY" : "UNHEALTHY";
     healthStatus.lastCheckAt = new Date();
-    healthStatus.error = null;
-    clearTimeout(timeoutId);
+    healthStatus.error = errors.length === 0 ? null : errors.join("; ");
 }
 
 const runFailureCommand = (serviceIndex) => {
@@ -127,10 +128,6 @@ app.post('/check', async (req, res) => {
 app.listen(CONFIG.PORT, () => {
     console.log(`Monitor server is running on port ${CONFIG.PORT}`);
     initServer();
-    setInterval(async () => {
-        await performHealthCheck();
-        if(healthStatus.status === "UNHEALTHY"){
-            runFailureCommand();
-        }
-    }, CONFIG.INTERVAL);
+    // Failed targets are already restarted individually inside performHealthCheck.
+    setInterval(performHealthCheck, CONFIG.INTERVAL);
 });

@@ -62,13 +62,43 @@ for(const file of handlerFiles){
     import(filePath).then(module => {handlers.set(file.slice(0,-3), module);});
 }
 
+// Async event listeners must never reject: discord.js doesn't catch them, so the rejection would be
+// unhandled. Handlers can also be missing for a moment at startup (they're imported asynchronously).
 client.on("interactionCreate", async interaction => {
-    await handlers.get('interactionCreate').default(interaction, editData);
+    try {
+        await handlers.get('interactionCreate')?.default(interaction, editData);
+    } catch (error) {
+        console.error('[interactionCreate] unhandled error:', error);
+    }
 });
 
 client.on("messageCreate", async message => {
     if(message.author.id === client.user.id) return;
-    await handlers.get('messageCreate').default(message, editData);
+    try {
+        await handlers.get('messageCreate')?.default(message, editData);
+    } catch (error) {
+        console.error('[messageCreate] unhandled error:', error);
+    }
+});
+
+client.on("error", (error) => {
+    console.error('[client] error:', error);
+});
+
+// Last-resort safety nets.
+// - A stray rejected promise is logged and the bot keeps running (it's tied to one failed operation).
+// - An uncaught exception leaves the process in an unknown state, so it is logged and the process exits;
+//   Docker's `restart: always` (and the monitor in server.js) bring the bot back cleanly.
+process.on('unhandledRejection', (reason) => {
+    console.error('[process] unhandled promise rejection:', reason);
+});
+process.on('uncaughtException', (error) => {
+    console.error('[process] uncaught exception, exiting:', error);
+    try {
+        disconnectAllVoice();
+    } finally {
+        process.exit(1);
+    }
 });
 
 

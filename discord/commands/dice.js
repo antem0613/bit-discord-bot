@@ -1,7 +1,8 @@
 import bcdice from 'bcdice';
-import { SlashCommandBuilder } from 'discord.js';
+import { ChannelType, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { saveData } from '../editData.js';
 import { updateActivity } from '../main.js';
+import { gameSystemChoices } from '../utils/autocomplete.js';
 
 const loader = new bcdice.DynamicLoader();
 
@@ -13,8 +14,9 @@ export const data = new SlashCommandBuilder()
                  .setDescription("使い方を表示します")
                  .addStringOption(option => option
                                  .setName('system_id')
-                                 .setDescription('システムごとの使い方を表示します')
-                                 .setRequired(false)))
+                                 .setDescription('システムごとの使い方を表示します（名前を入力すると候補が出ます）')
+                                 .setRequired(false)
+                                 .setAutocomplete(true)))
   .addSubcommand((subCommand) => subCommand
                  .setName("systems")
                  .setDescription("システム一覧を表示します"))
@@ -23,8 +25,9 @@ export const data = new SlashCommandBuilder()
                  .setDescription("ゲームシステムを設定します。")
                  .addStringOption(option => option
                                  .setName("system_id")
-                                 .setDescription("システムID 空文字でデフォルトになります")
-                                 .setRequired(false)))
+                                 .setDescription("システムID（名前を入力すると候補が出ます・空欄でデフォルト）")
+                                 .setRequired(false)
+                                 .setAutocomplete(true)))
   .addSubcommand(subCommand => subCommand
                 .setName("info")
                 .setDescription("Dice機能の情報を表示します"))
@@ -40,7 +43,7 @@ export const data = new SlashCommandBuilder()
                 .setDescription("ダイスボットの使用するチャンネルを設定します")
                 .addChannelOption(option=>option
                                   .setName("channel")
-                                  .setDescription("チャンネル")
+                                  .setDescription("チャンネル（省略時はこのチャンネル）")
                                   .setRequired(false)));
   
 
@@ -142,9 +145,14 @@ export async function execute(interaction, data){
 
   if(subCommand=="roll"){
     const command = interaction.options.getString("command");
-    const result = await rollDice(command, interaction.guildId);
+    const result = await rollDice(command, interaction.guildId, data);
     if(result == null){
       await interaction.reply("コマンドが正しくありません");
+      return;
+    }
+    // rollDice marks secret rolls with a leading "s": show those only to the roller.
+    if(result.startsWith("s")){
+      await interaction.reply({ content: `🔒 シークレットダイス\n${result.slice(1)}`, flags: MessageFlags.Ephemeral });
       return;
     }
     await interaction.reply(result);
@@ -152,9 +160,15 @@ export async function execute(interaction, data){
   }
 
   if(subCommand=="set-channel"){
-    const channel = interaction.options.getChannel("channel");
+    // The option is optional: when omitted, use the channel the command was run in.
+    const channel = interaction.options.getChannel("channel") ?? interaction.channel;
     const config = data.initGuildConfigIfUndefined(guildId);
     const diceConfig = config.dice;
+
+    if (!channel || channel.type !== ChannelType.GuildText) {
+      await interaction.reply({ content: "テキストチャンネルを指定してください", flags: MessageFlags.Ephemeral });
+      return;
+    }
 
     if (channel.id === config.tts.textChannelId) {
       await interaction.reply("ダイスボットのチャンネルはTTSのチャンネルと同じにできません");
@@ -201,4 +215,15 @@ export async function rollDice(command, guildId, data) {
     console.log("diceroll cannot execute");
     return null;
   }
+}
+
+// Game system suggestions for /dice help and /dice set-system (system_id).
+export async function autocomplete(interaction) {
+  const focused = interaction.options.getFocused(true);
+  if (focused.name !== "system_id") {
+    await interaction.respond([]);
+    return;
+  }
+  const limit = parseInt(process.env.autocompleteLimit);
+  await interaction.respond(gameSystemChoices(loader.listAvailableGameSystems(), focused.value, limit));
 }
