@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { LogOut } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 import { avatarUrlFor, getSession } from "@/lib/discord-auth";
 
 export default async function SiteHeader() {
@@ -25,6 +25,10 @@ export default async function SiteHeader() {
                 <span className="max-w-40 truncate font-medium">{user.displayName}</span>
               </span>
               <Image src={avatarUrlFor(user)} alt={user.displayName} width={32} height={32} className="size-8 rounded-full bg-surface sm:hidden" />
+              <Link href="/settings" className="btn-ghost px-3" title="設定・カレンダー連携">
+                <Settings className="size-4" />
+                <span className="hidden md:inline">設定</span>
+              </Link>
               <form action="/api/auth/logout" method="post">
                 <button type="submit" className="btn-ghost px-3" title="ログアウト">
                   <LogOut className="size-4" />

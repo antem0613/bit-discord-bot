@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { SESSION_COOKIE, decodeSession, type SessionUser } from "@/lib/session-token";
+import { MOCK_ID_PREFIX, isMockAuthEnabled } from "@/lib/mock-auth";
+import { prisma } from "@/lib/prisma";
 import { DISCORD_API, DISCORD_BOT_USER_AGENT, defaultAvatarUrl, discordAvatarUrl, memberDisplayName, type DiscordGuildMember } from "@/lib/discord-member";
 
 export { SESSION_COOKIE, encodeSession, sessionCookieOptions, type SessionUser } from "@/lib/session-token";
@@ -124,6 +126,20 @@ export async function fetchGuildMembers(): Promise<GuildMemberSummary[]> {
 
     if (page.length < 1000) break;
     after = page[page.length - 1].user.id;
+  }
+
+  // Dev-only: let mock-login users be picked as participants, so tests never DM real members.
+  if (isMockAuthEnabled()) {
+    const mocks = await prisma.member.findMany({ where: { id: { startsWith: MOCK_ID_PREFIX } }, orderBy: { id: "asc" } });
+    members.unshift(
+      ...mocks.map((m) => ({
+        id: m.id,
+        username: m.username,
+        // Keep the real display name (it gets upserted into Member); the "@mock-…" username marks it.
+        displayName: m.displayName ?? m.username,
+        avatarUrl: defaultAvatarUrl("0"),
+      }))
+    );
   }
 
   return members;

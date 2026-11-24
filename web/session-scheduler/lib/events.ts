@@ -1,11 +1,11 @@
 import { AvailabilitySymbol, Prisma, SchedulingStatus, SessionRoom } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import dayjs from "@/lib/dayjs";
-import { DEFAULT_SYMBOL_LABELS, SYMBOL_ORDER, isExclusiveRoom } from "@/lib/event-constants";
+import { DEFAULT_SYMBOL_LABELS, SYMBOL_ORDER, TIME_PATTERN, isExclusiveRoom } from "@/lib/event-constants";
 import { notifyParticipantsAdded, notifyRecruitmentAutoClosed } from "@/lib/notifications";
 
 export { toDateKey } from "@/lib/calendar-grid";
-export { SYMBOL_ORDER, DEFAULT_SYMBOL_LABELS, SYMBOL_MARKS, SYMBOL_SCORES, ROOM_LABELS } from "@/lib/event-constants";
+export { SYMBOL_ORDER, DEFAULT_SYMBOL_LABELS, SYMBOL_MARKS, SYMBOL_SCORES, ROOM_LABELS, formatTimeRange } from "@/lib/event-constants";
 
 // Thrown for expected validation/permission failures. Callers (the website's server actions, and the
 // bot-originated event-creation API route) turn this into a user-facing message instead of a 500.
@@ -17,6 +17,14 @@ export function parseDateOnly(value: string): Date {
     throw new EventValidationError(`日付の形式が正しくありません: ${value}`);
   }
   return date;
+}
+
+// Optional "HH:mm" form input → normalized string, or null when empty.
+export function parseTimeInput(raw: FormDataEntryValue | null, label: string): string | null {
+  const value = String(raw ?? "").trim();
+  if (!value) return null;
+  if (!TIME_PATTERN.test(value)) throw new EventValidationError(`${label}の形式が正しくありません: ${value}`);
+  return value;
 }
 
 // Shared by create and reschedule: an empty deadline is allowed, but a set one must be strictly in the future.
@@ -88,7 +96,8 @@ export type FinalDateInput = { date: Date; room: SessionRoom | null };
 // Pass a transaction client to check-and-insert atomically (see `lockRoomBookings`).
 export async function findRoomConflicts(
   dates: FinalDateInput[],
-  db: Prisma.TransactionClient | typeof prisma = prisma
+  db: Prisma.TransactionClient | typeof prisma = prisma,
+  excludeEventId?: string
 ): Promise<FinalDateInput[]> {
   const roomedDates = dates.filter(
     (d): d is FinalDateInput & { room: SessionRoom } => d.room !== null && isExclusiveRoom(d.room)
@@ -99,6 +108,7 @@ export async function findRoomConflicts(
     where: {
       OR: roomedDates.map((d) => ({ date: d.date, room: d.room })),
       event: { status: { not: SchedulingStatus.CANCELLED } },
+      ...(excludeEventId ? { eventId: { not: excludeEventId } } : {}),
     },
     select: { date: true, room: true },
   });

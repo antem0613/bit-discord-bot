@@ -10,7 +10,16 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 // still letting the user freely add to or remove from it afterward.
 // Navigation and selection are limited to today..the last day of the month 12 months ahead, the same
 // range the main calendar can display.
-export default function CandidateDatePicker({ name = "candidateDates", initialDates = [] }: { name?: string; initialDates?: string[] }) {
+export default function CandidateDatePicker({
+  name = "candidateDates",
+  initialDates = [],
+  onChange,
+}: {
+  name?: string;
+  initialDates?: string[];
+  // Called with the sorted selection after every change (e.g. to warn about removed answered dates).
+  onChange?: (selected: string[]) => void;
+}) {
   const firstInitialDate = initialDates[0] ? new Date(`${initialDates[0]}T00:00:00.000Z`) : null;
   const [year, setYear] = useState(() => firstInitialDate?.getUTCFullYear() ?? jstToday().getUTCFullYear());
   const [month, setMonth] = useState(() => firstInitialDate?.getUTCMonth() ?? jstToday().getUTCMonth());
@@ -27,15 +36,14 @@ export default function CandidateDatePicker({ name = "candidateDates", initialDa
   const maxMonthIndex = minMonthIndex + 12;
 
   function toggle(key: string) {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
+    const next = new Set(selected);
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    setSelected(next);
+    onChange?.(Array.from(next).sort());
   }
 
   function goToMonth(delta: number) {

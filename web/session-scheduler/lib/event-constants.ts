@@ -43,3 +43,19 @@ export const ROOM_LABELS: Record<SessionRoom, string> = {
   Room4: "セッション部屋４",
   OtherServer: "他サーバー",
 };
+
+// "HH:mm" (24h). Used for the optional start/end time of a finalized date.
+export const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+// "20:00", "23:30" -> "20:00〜23:30"; start only -> "20:00〜"; end only -> "〜23:30"; neither -> "".
+export function formatTimeRange(startTime: string | null | undefined, endTime: string | null | undefined): string {
+  if (!startTime && !endTime) return "";
+  return `${startTime ?? ""}〜${endTime ?? ""}`;
+}
+
+// Hosts can DM non-responders at most once per this interval.
+export const REMINDER_COOLDOWN_MS = 60 * 60 * 1000;
+
+// Max lengths (also enforced by the DB column sizes).
+export const COMMENT_MAX_LENGTH = 200;
+export const NOTE_MAX_LENGTH = 30;

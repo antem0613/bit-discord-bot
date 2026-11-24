@@ -16,7 +16,15 @@ import { ROOM_LABELS } from "@/lib/event-constants";
 import { isResponseClosed } from "@/lib/events";
 import { SchedulingStatus } from "@/app/generated/prisma/client";
 
-export type CalendarDayEvent = { id: string; title: string; room: string | null; cancelled: boolean; description: string };
+export type CalendarDayEvent = {
+  id: string;
+  title: string;
+  room: string | null;
+  cancelled: boolean;
+  description: string;
+  startTime: string | null; // "HH:mm"
+  endTime: string | null;
+};
 // A still-being-scheduled event that lists this day as a candidate date (shown as tentative).
 export type CalendarCandidate = { id: string; title: string; closed: boolean };
 export type CalendarMonthData = {
@@ -70,7 +78,7 @@ export async function getCalendarMonthData(requestedYear: number, requestedMonth
     prisma.eventFinalDate.findMany({
       where: { date: { gte: rangeStart, lt: rangeEnd } },
       include: { event: { select: { id: true, title: true, description: true, status: true } } },
-      orderBy: { date: "asc" },
+      orderBy: [{ date: "asc" }, { startTime: { sort: "asc", nulls: "last" } }],
     }),
     getCandidatesByDate(rangeStart, rangeEnd),
   ]);
@@ -84,6 +92,8 @@ export async function getCalendarMonthData(requestedYear: number, requestedMonth
       room: f.room,
       cancelled: f.event.status === "CANCELLED",
       description: f.event.description,
+      startTime: f.startTime,
+      endTime: f.endTime,
     });
   }
 
@@ -115,7 +125,7 @@ export async function getCalendarDayData(requestedDateKey: string): Promise<Cale
     prisma.eventFinalDate.findMany({
       where: { date: { gte: date, lt: nextDay } },
       include: { event: { select: { id: true, title: true, description: true, status: true } } },
-      orderBy: { date: "asc" },
+      orderBy: [{ date: "asc" }, { startTime: { sort: "asc", nulls: "last" } }],
     }),
     getCandidatesByDate(date, nextDay),
   ]);
@@ -126,6 +136,8 @@ export async function getCalendarDayData(requestedDateKey: string): Promise<Cale
     room: f.room,
     cancelled: f.event.status === "CANCELLED",
     description: f.event.description,
+    startTime: f.startTime,
+    endTime: f.endTime,
   }));
 
   return {
@@ -141,6 +153,8 @@ export type EventOccurrence = {
   id: string;
   title: string;
   description: string;
+  startTime: string | null; // "HH:mm"
+  endTime: string | null;
   roomLabel: string | null;
   cancelled: boolean;
   date: string; // YYYY-MM-DD
@@ -156,13 +170,15 @@ export async function getFinalizedEventOccurrences(rangeStart: Date, rangeEnd: D
   const finalDates = await prisma.eventFinalDate.findMany({
     where: { date: { gte: rangeStart, lt: rangeEnd } },
     include: { event: { select: { id: true, title: true, description: true, status: true } } },
-    orderBy: { date: "asc" },
+    orderBy: [{ date: "asc" }, { startTime: { sort: "asc", nulls: "last" } }],
   });
 
   return finalDates.map((f) => ({
     id: f.event.id,
     title: f.event.title,
     description: f.event.description,
+    startTime: f.startTime,
+    endTime: f.endTime,
     roomLabel: f.room ? ROOM_LABELS[f.room] : null,
     cancelled: f.event.status === "CANCELLED",
     date: toDateKey(f.date),

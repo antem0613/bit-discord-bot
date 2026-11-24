@@ -11,12 +11,14 @@ import type { GuildMemberSummary } from "@/lib/discord-auth";
 export default function ParticipantPicker({
   name = "participantIds",
   members,
+  initialSelected = [],
 }: {
   name?: string;
   members: GuildMemberSummary[];
+  initialSelected?: string[];
 }) {
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(initialSelected));
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -114,6 +116,8 @@ export default function ParticipantPicker({
         {selected.size > 0 ? `${selected.size}人を選択中` : "参加者を選択しなくても作成できます"}
       </p>
 
+      {/* Tells the edit action the picker was available, so an empty selection means "remove all". */}
+      <input type="hidden" name="participantsEditable" value="1" />
       {Array.from(selected).map((id) => (
         <input key={id} type="hidden" name={name} value={id} />
       ))}

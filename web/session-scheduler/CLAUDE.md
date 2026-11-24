@@ -15,4 +15,8 @@ dev-only mock login instead of Discord OAuth:
 - Mock users never receive Discord DMs (`lib/notifications.ts` skips `mock-` ids).
 - Clean up afterwards with `DELETE /api/auth/mock`: deletes events created by `mock-*` members and
   the `mock-*` members themselves (their answers/participations cascade).
-- Never select participants in the create form while testing: real members get Discord DMs.
+- Never select real members as participants while testing: they get Discord DMs. With mock auth on,
+  existing `mock-*` members are listed in the participant picker (username `@mock-…`); log them in
+  once via `/api/auth/mock?user=…` first, then select only labels containing `@mock-`.
+- After changing `prisma/schema.prisma` (+ `prisma migrate deploy` / `prisma generate`), the running
+  `next dev` must be restarted: it keeps the old Prisma client and queries on new columns fail.
