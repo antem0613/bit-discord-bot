@@ -50,9 +50,22 @@ export function decodeSession(token: string): SessionUser | null {
   }
 }
 
+// Browsers drop `Secure` cookies on plain http (except localhost), so the flag follows the public URL
+// rather than NODE_ENV: a production build served over http (e.g. on a LAN) can still log in.
+// COOKIE_SECURE=true|false overrides (e.g. TLS terminated by a proxy while SITE_BASE_URL is unset).
+export function secureCookiesEnabled(): boolean {
+  const override = process.env.COOKIE_SECURE?.trim().toLowerCase();
+  if (override === "true") return true;
+  if (override === "false") return false;
+  return /^https:\/\//i.test(process.env.SITE_BASE_URL?.trim() ?? "");
+}
+
+// Read at request time (getter), so the value reflects the runtime environment, not the build.
 export const sessionCookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
+  get secure() {
+    return secureCookiesEnabled();
+  },
   sameSite: "lax" as const,
   maxAge: SESSION_MAX_AGE_SECONDS,
   path: "/",

@@ -1,23 +1,44 @@
+# Production: builds the Next.js app (`next build`, standalone) and runs `node server.js`.
+#   docker compose up -d --build
+# Pending DB migrations are applied automatically by the one-shot `migrate` service before `web`
+# starts. For development with hot reload, add the override:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 services:
   web:
-    build: .
+    build:
+      context: .
+      target: runner
     container_name: web
+    restart: unless-stopped
     ports:
       - "3002:3002"
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/.next
     env_file:
       - .env
     environment:
       POSTGRES_HOST: db
     depends_on:
-      - db
-  
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  migrate:
+    build:
+      context: .
+      target: migrate
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
   db:
     image: postgres:15-alpine
     container_name: db
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
@@ -27,6 +48,11 @@ services:
       - "${POSTGRES_PORT:-5433}:${POSTGRES_PORT:-5433}"
     volumes:
       - db-data:/var/lib/postgresql/data
-  
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
 volumes:
   db-data:

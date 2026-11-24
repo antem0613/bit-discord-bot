@@ -1,0 +1,14 @@
+# Development override: `next dev` with the source mounted and hot reload.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Migrations still run first via the `migrate` service. To create a new migration during development,
+# run `npx prisma migrate dev --name <change>` on the host against the dev DB.
+services:
+  web:
+    build:
+      context: .
+      target: dev
+    restart: "no"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next

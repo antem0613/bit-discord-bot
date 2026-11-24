@@ -18,18 +18,21 @@ cp .env.example .env
 `SESSION_SECRET` と `BOT_EVENTS_SECRET` は別々のランダムな値を使用してください。
 例えば `openssl rand -hex 32` で生成できます。サンプルのDBパスワードは必ず変更してください。
 
-初回はDBを起動し、既存マイグレーションを適用してからWebを起動します。
+Composeは本番構成です。Next.jsをビルド（`next build`、standalone出力）し、`node server.js` で起動します。
+起動時には `migrate` サービスが未適用のマイグレーションを自動で適用し、成功してからWebが起動します。
 
 ```sh
-docker compose up -d db
-docker compose run --rm --no-deps web npx prisma migrate deploy
-docker compose up -d --build web
-docker compose exec -T web npx prisma migrate status
+docker compose up -d --build
+docker compose logs migrate   # 「No pending migrations」または適用したマイグレーション名
 ```
 
-DBの接続受付前にマイグレーションが失敗した場合は、DB起動後に再実行してください。
-ローカルでは [http://localhost:3002](http://localhost:3002) でアクセスできます。
-`npm run dev` の前にPrisma Clientが自動生成されます。
+[http://localhost:3002](http://localhost:3002) でアクセスできます。
+
+ホットリロードする開発用構成で起動する場合は、開発用のオーバーライドを重ねます。
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+```
 
 ## 環境変数とDocker
 
@@ -42,6 +45,9 @@ DBの接続受付前にマイグレーションが失敗した場合は、DB起�
    接続URLはPrisma CLIとアプリ共通の関数で生成するため、`DATABASE_URL` と
    `DATABASE_URL_DOCKER` の記入は不要です。パスワードはそのまま記入し、URLエンコードは不要です。
 - `SITE_BASE_URL`: DDNSなどの公開URL。イベントリンクとログイン後の転送先に使用します。
+- `COOKIE_SECURE`（任意）: ログインCookieに `Secure` を付けるか（`true` / `false`）。未設定なら
+   `SITE_BASE_URL` が `https://` のときだけ付けます。HTTPSのリバースプロキシ配下で
+   `SITE_BASE_URL` を設定しない場合は `true` にしてください。
 - `ALLOWED_DEV_ORIGINS`: 開発サーバーを許可するホスト名のカンマ区切り。
    スキーム・ポートは含めません（例: `scheduler.example.com,localhost`）。
 
@@ -163,20 +169,19 @@ npm start -- --port 3002
 
 ## 更新とデータ保存
 
-現在のComposeは `next dev` を起動する開発構成です。ソースは `/app` にマウントされます。
-環境変数やNext.js設定の変更時はコンテナを再作成します。
+コードの更新はビルドし直して反映します。マイグレーションも自動で適用されます。
 
 ```sh
-docker compose up -d --force-recreate web
+git pull
+docker compose exec -T db pg_dump -U <POSTGRES_USERの値> -d <POSTGRES_DBの値> > backup.sql   # 事前バックアップ
+docker compose up -d --build
+docker compose logs migrate
 ```
 
-依存やDockerfileの変更時は、匿名の依存ボリュームも更新します。
-
-```sh
-docker compose up -d --build --no-deps --renew-anon-volumes web
-docker compose exec -T web npx prisma migrate deploy
-docker compose exec -T web npx prisma migrate status
-```
+環境変数だけを変えた場合はビルド不要で、コンテナの再作成だけで反映されます
+（`docker compose up -d --force-recreate web`）。
+マイグレーションが失敗した場合、Webは起動せず、それまでのコンテナが動き続けます。
+`docker compose logs migrate` で原因を確認してください。
 
 DBは `db-data` の名前付きボリュームに保存されます。更新・マイグレーション前には
 バックアップしてください。`docker compose down -v` はDBデータを削除します。
@@ -205,16 +210,15 @@ docker compose exec -T web npx prisma migrate status
 | 症状 | 確認事項 |
 | --- | --- |
 | DB認証エラー | DB内のパスワードと `.env` の一致、コンテナの再作成 |
-| Prismaの追加フィールドが認識されない | `npx prisma generate` とWeb再起動 |
+| Prismaの追加フィールドが認識されない | 本番構成は `docker compose up -d --build`、開発サーバーは `npx prisma generate` と再起動 |
 | ログイン後のURLが違う | `SITE_BASE_URL` と `DISCORD_REDIRECT_URI` |
-| ログアウト後のURLが違う | 現在は `NEXT_PUBLIC_BASE_URL` を参照するため、利用時は `SITE_BASE_URL` と同じ値を設定 |
 | OAuthのstateエラー | 同じ公開ホストでログインを開始・完了しているか、Cookieが保存されているか |
 | メンバー一覧が403になる | BotトークンとServer Members Intent |
 | Bot APIが401になる | 両サービスの `BOT_EVENTS_SECRET` |
 | リマインダーが来ない | Botの稼働、サイト到達性、対象日・回答条件、DM受信設定 |
 
-公開運用ではHTTPSを使用してください。本番モードの認証Cookieは `Secure` が付くため、
-HTTPでのログインは正常に動作しません。開発サーバーやDBポートを無制限に公開しないでください。
+公開運用ではHTTPSを使用してください（`SITE_BASE_URL` を `https://` にするとCookieに `Secure` が付きます）。
+開発サーバーやDBポートを無制限に公開しないでください。
 
 ## 主なファイル
 

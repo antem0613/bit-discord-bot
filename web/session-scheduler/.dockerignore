@@ -8,3 +8,9 @@ node_modules
 *.pfx
 *.log
 *.tsbuildinfo
+# regenerated inside the image
+app/generated
+# not needed in the image
+.git
+docker-compose*.yml
+Dockerfile
