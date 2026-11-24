@@ -1,8 +1,9 @@
-import { getVoiceConnection, joinVoiceChannel, createAudioPlayer, NoSubscriberBehavior } from "@discordjs/voice";
-import { SlashCommandBuilder, ApplicationCommandOptionType, ChannelType, AttachmentBuilder } from "discord.js";
+import { getVoiceConnection, joinVoiceChannel, createAudioPlayer, NoSubscriberBehavior, VoiceConnectionStatus, entersState } from "@discordjs/voice";
+import { SlashCommandBuilder, ApplicationCommandOptionType, ChannelType, AttachmentBuilder, MessageFlags } from "discord.js";
 import { TextPreprocessor } from "../textPreprocessor.js";
-import { TextToSpeech } from "../TextToSpeech.js";
+import { enqueueTTSJob, clearTTSQueue } from "../TextToSpeech.js";
 import { saveData, editData } from '../editData.js';
+import { speakerChoices } from "../utils/autocomplete.js";
 import dotenv from "dotenv";
 import e from "express";
 dotenv.config();
@@ -28,38 +29,43 @@ const envAutocompleteLimit = parseInt(process.env.autocompleteLimit);
 
 
 
-// グローバルTTSジョブキュー（ギルドごと）
-const ttsJobQueues = {};
-const ttsJobRunners = {};
+// The per-guild job queue lives in TextToSpeech.js; re-exported here for existing importers.
+export { enqueueTTSJob, clearTTSQueue };
 
-/**
- * TTSジョブをキューに追加し、監視ループを起動
- * @param {string} guildId
- * @param {object} job { text: string[], speakerConfig: object, player: object }
- */
-export function enqueueTTSJob(guildId, job) {
-    if (!ttsJobQueues[guildId]) ttsJobQueues[guildId] = [];
-    ttsJobQueues[guildId].push(job);
-    if (!ttsJobRunners[guildId]) {
-        ttsJobRunners[guildId] = runTTSJobQueue(guildId);
+const RECONNECT_GRACE_MS = 5000;
+const lifecycleAttached = new WeakSet();
+
+// Wires error/disconnect handling onto a guild's voice connection and player (once per object).
+// Without an 'error' listener, an error event from either one is thrown and takes the whole bot down.
+function attachVoiceLifecycle(guildId, connection, player) {
+    if (!lifecycleAttached.has(player)) {
+        lifecycleAttached.add(player);
+        player.on("error", (error) => {
+            console.error(`[TTS] audio player error (guild ${guildId}):`, error?.message ?? error);
+        });
     }
-}
+    if (lifecycleAttached.has(connection)) return;
+    lifecycleAttached.add(connection);
 
-/**
- * TTSジョブキューを逐次処理するループ
- * @param {string} guildId
- */
-async function runTTSJobQueue(guildId) {
-    while (ttsJobQueues[guildId] && ttsJobQueues[guildId].length > 0) {
-        const job = ttsJobQueues[guildId][0];
+    connection.on("error", (error) => {
+        console.error(`[TTS] voice connection error (guild ${guildId}):`, error?.message ?? error);
+    });
+    // Recommended @discordjs/voice pattern: a Disconnected connection that starts reconnecting on its
+    // own within a few seconds is fine (e.g. moved between channels); otherwise give up cleanly.
+    connection.on(VoiceConnectionStatus.Disconnected, async () => {
         try {
-            await TextToSpeech(job.text, job.speakerConfig, job.player, []); // queueは空配列でOK
-        } catch (e) {
-            console.error('[TTS] ジョブ処理中にエラー:', e);
+            await Promise.race([
+                entersState(connection, VoiceConnectionStatus.Signalling, RECONNECT_GRACE_MS),
+                entersState(connection, VoiceConnectionStatus.Connecting, RECONNECT_GRACE_MS),
+            ]);
+        } catch {
+            console.warn(`[TTS] voice connection lost for guild ${guildId}; destroying it`);
+            if (connection.state.status !== VoiceConnectionStatus.Destroyed) connection.destroy();
         }
-        ttsJobQueues[guildId].shift();
-    }
-    ttsJobRunners[guildId] = null;
+    });
+    connection.on(VoiceConnectionStatus.Destroyed, () => {
+        clearTTSQueue(guildId);
+    });
 }
 
 // デフォルト値
@@ -108,8 +114,9 @@ export const data = new SlashCommandBuilder()
         .setDescription("テキスト読み上げを有効にします")
         .addStringOption(option => option
             .setName("id")
-            .setDescription("話者")
+            .setDescription("話者（名前を入力すると候補が出ます）")
             .setRequired(false)
+            .setAutocomplete(true)
         )
         .addChannelOption(option => option
             .setName("textchannel")
@@ -170,8 +177,9 @@ export const data = new SlashCommandBuilder()
         .setDescription("読み上げのパラメータを設定します")
         .addStringOption(option => option
             .setName("speaker")
-            .setDescription("話者")
+            .setDescription("話者（名前を入力すると候補が出ます）")
             .setRequired(false)
+            .setAutocomplete(true)
         )
         .addNumberOption(option => option
             .setName("speed")
@@ -214,8 +222,9 @@ export const data = new SlashCommandBuilder()
         .setDescription("読み上げの設定を行います")
         .addStringOption(option => option
             .setName("id")
-            .setDescription("話者")
+            .setDescription("話者（名前を入力すると候補が出ます）")
             .setRequired(true)
+            .setAutocomplete(true)
         )
     )
     .addSubcommand(subCommand => subCommand
@@ -352,6 +361,8 @@ export async function execute(interaction, data) {
             return;
         }
 
+        attachVoiceLifecycle(guildId, connection, player);
+
         const subscribe = connection.subscribe(player);
         if (!subscribe) {
             connection.destroy();
@@ -467,12 +478,13 @@ export async function execute(interaction, data) {
         const connection = getVoiceConnection(guildId);
 
         if (!connection) {
-            interaction.reply("通話に参加していません");
+            await interaction.reply("通話に参加していません");
 
             return;
         }
 
-        connection.state.subscription.player.stop();
+        clearTTSQueue(guildId);
+        connection.state.subscription?.player?.stop(true);
         connection.destroy();
 
         data.saveConfig(guildId);
@@ -805,7 +817,7 @@ export async function execute(interaction, data) {
             // 既存語彙の値（読みに）キーが含まれていたら反映しない
             const foundInValue = Object.values(dict).some(v => v.includes(key));
             if (foundInValue || key === value) {
-                await interaction.reply({ content: `既存の語彙の読みにキー「${key}」が含まれているため、追加・更新できません。` , ephemeral: true });
+                await interaction.reply({ content: `既存の語彙の読みにキー「${key}」が含まれているため、追加・更新できません。` , flags: MessageFlags.Ephemeral });
                 return;
             }
             if (value === "" || value === undefined || value === null || value.trim() === "") {
@@ -865,4 +877,15 @@ function createSpeakerSettingMessage(memberName, memberSpeakerConfig) {
         `#音量:${String(memberSpeakerConfig.volumeScale)}` + " " +
         `#緩急:${String(memberSpeakerConfig.tempoDynamicsScale)}` +
         `」に設定しました`;
+}
+
+// Speaker suggestions for /tts on (id), /tts param (speaker) and /tts speaker (id).
+export async function autocomplete(interaction) {
+    const focused = interaction.options.getFocused(true);
+    if (focused.name !== "id" && focused.name !== "speaker") {
+        await interaction.respond([]);
+        return;
+    }
+    const speakers = await speakersWithStyles;
+    await interaction.respond(speakerChoices(speakers, focused.value, envAutocompleteLimit));
 }
