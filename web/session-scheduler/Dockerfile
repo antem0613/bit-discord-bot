@@ -7,7 +7,7 @@
 #   migrate  - one-shot `prisma migrate deploy` (has the Prisma CLI and migrations)
 #   runner   - production image: only .next/standalone + static assets, runs `node server.js`
 
-FROM node:22.13.1-alpine AS deps
+FROM node:24.22.3-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -29,7 +29,7 @@ RUN POSTGRES_USER=build POSTGRES_PASSWORD=build POSTGRES_DB=build npx prisma gen
 FROM builder AS migrate
 CMD ["npx", "prisma", "migrate", "deploy"]
 
-FROM node:22.13.1-alpine AS runner
+FROM node:24.22.3-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
