@@ -40,7 +40,8 @@ export default async (interaction, data) => {
         return;
     }
 
-    if (interaction.isChatInputCommand()) {
+    // Slash commands and right-click (context menu) commands share the same `execute` entry point.
+    if (interaction.isChatInputCommand() || interaction.isContextMenuCommand?.()) {
         const command = interaction.client.commands.get(interaction.commandName);
         if (!command) {
             console.error(`"${interaction.commandName}" command not found`);
@@ -60,5 +61,17 @@ export default async (interaction, data) => {
             return;
         }
         await runHandler(interaction, data, () => command.handleModalSubmit(interaction, data));
+        return;
+    }
+
+    if (interaction.isButton?.()) {
+        // Same "<commandName>:<action>:..." custom ID convention as modals.
+        const [commandName] = interaction.customId.split(":");
+        const command = interaction.client.commands.get(commandName);
+        if (!command?.handleButton) {
+            console.error(`No button handler found for customId "${interaction.customId}"`);
+            return;
+        }
+        await runHandler(interaction, data, () => command.handleButton(interaction, data));
     }
 };
